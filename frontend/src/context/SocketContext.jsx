@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { getAuthState } from "../utils/auth";
 import { useNotification } from "./NotificationContext";
+import { API_BASE_URL } from "../services/api";
 
 const SocketContext = createContext();
 
@@ -13,7 +14,7 @@ export const SocketProvider = ({ children }) => {
 
   useEffect(() => {
     if (userId) {
-      const newSocket = io("http://localhost:5000", {
+      const newSocket = io(API_BASE_URL, {
         query: { userId },
       });
 
@@ -41,7 +42,7 @@ export const SocketProvider = ({ children }) => {
       const token = localStorage.getItem("token");
       if (!token) return;
       
-      const res = await fetch("http://localhost:5000/api/notifications/unread-count", {
+      const res = await fetch(`${API_BASE_URL}/api/notifications/unread-count`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();

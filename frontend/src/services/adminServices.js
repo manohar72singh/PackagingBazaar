@@ -1,4 +1,4 @@
-import API from "./api";
+import API, { API_BASE_URL } from "./api";
 
 // --- Dashboard Summary ---
 export const fetchDashboardStats = async () => {
@@ -235,7 +235,7 @@ export const deleteSubCategoryAdmin = async (id) => {
 // --- Export Data ---
 export const getExportUrl = (entity) => {
   const token = localStorage.getItem("token");
-  return `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/admin/export/${entity}?token=${token}`;
+  return `${API_BASE_URL}/api/admin/export/${entity}?token=${token}`;
 };
 
 export const downloadExport = async (entity) => {

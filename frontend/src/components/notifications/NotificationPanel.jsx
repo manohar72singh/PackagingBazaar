@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSocket } from "../../context/SocketContext";
+import { API_BASE_URL } from "../../services/api";
 import { Bell, Check, Trash2 } from "lucide-react";
 
 const NotificationPanel = () => {
@@ -29,7 +30,7 @@ const NotificationPanel = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/notifications", {
+      const res = await fetch(`${API_BASE_URL}/api/notifications`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -46,7 +47,7 @@ const NotificationPanel = () => {
   const markAsRead = async (id) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/notifications/mark-as-read/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/notifications/mark-as-read/${id}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}` },
       });

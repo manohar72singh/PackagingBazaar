@@ -115,17 +115,25 @@ export const updateSellerStatus = async (req, res) => {
     // 1. Update seller status
     await connection.query("UPDATE sellers SET status = ? WHERE user_id = ?", [status, id]);
 
-    // 2. If status is 'verified', update users table
-    if (status === 'verified') {
-      await connection.query("UPDATE users SET is_verified = 1 WHERE id = ?", [id]);
+    // 2. If status is 'verified' or 'hold', notify the seller
+    if (status === 'verified' || status === 'hold') {
+      if (status === 'verified') {
+        await connection.query("UPDATE users SET is_verified = 1 WHERE id = ?", [id]);
+      } else {
+        await connection.query("UPDATE users SET is_verified = 0 WHERE id = ?", [id]);
+      }
       
-      // Notify Seller
       try {
+        const title = status === 'verified' ? 'Account Verified!' : 'Account on Hold';
+        const message = status === 'verified' 
+          ? 'Congratulations! Your seller account has been verified. You can now receive leads and manage your products.'
+          : 'Your account has been placed on hold by the admin. Please check your email or contact support for more details.';
+
         await sendNotification({
           userId: id,
           userRole: 'seller',
-          title: 'Account Verified!',
-          message: 'Congratulations! Your seller account has been verified. You can now receive leads and manage your products.',
+          title: title,
+          message: message,
           type: 'status'
         });
       } catch (notifErr) {
@@ -160,16 +168,42 @@ export const rejectSeller = async (req, res) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
+
+    // Fetch user details before deleting for notification
+    const [userRows] = await connection.query("SELECT name, email, mobile FROM users WHERE id = ?", [id]);
+    if (userRows.length > 0) {
+      const user = userRows[0];
+      // Send Rejection Email
+      try {
+        const subject = "Application Status - PackagingBazaar";
+        const html = `
+          <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee;">
+            <h2 style="color: #e11d48;">Application Declined</h2>
+            <p>Hi ${user.name},</p>
+            <p>We regret to inform you that your seller application on PackagingBazaar has been declined at this time.</p>
+            <p>If you have any questions or would like to re-apply with corrected details, please contact our support team.</p>
+            <hr>
+            <p>Regards,<br>Team PackagingBazaar</p>
+          </div>
+        `;
+        await sendEmail(user.email, subject, "Your application has been declined.", html);
+      } catch (mailErr) {
+        console.error("Mail Error (rejection):", mailErr);
+      }
+    }
+
     await connection.query("DELETE FROM sellers WHERE user_id = ?", [id]);
     const [result] = await connection.query("DELETE FROM users WHERE id = ?", [id]);
+    
     if (result.affectedRows === 0) {
       await connection.rollback();
       return res.status(404).json({ success: false, message: "User not found." });
     }
     await connection.commit();
-    res.status(200).json({ success: true, message: "Seller deleted." });
+    res.status(200).json({ success: true, message: "Seller deleted and notified." });
   } catch (error) {
     await connection.rollback();
+    console.error("Error rejecting seller:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   } finally {
     connection.release();
