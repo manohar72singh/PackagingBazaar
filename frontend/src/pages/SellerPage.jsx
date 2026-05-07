@@ -16,7 +16,7 @@ export default function SellerPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    const loadManufacturers = async () => {
+    const loadSuppliers = async () => {
       setLoading(true);
       try {
         // Fetch products using dedicated seller endpoint
@@ -45,13 +45,13 @@ export default function SellerPage() {
           setSellers(Object.values(grouped));
         }
       } catch (err) {
-        console.error("Failed to load manufacturers", err);
+        console.error("Failed to load suppliers", err);
       } finally {
         setLoading(false);
       }
     };
 
-    loadManufacturers();
+    loadSuppliers();
   }, []);
 
   const handleInquiryOpen = (product) => {
@@ -67,13 +67,13 @@ export default function SellerPage() {
           <div className="absolute top-0 right-0 w-64 h-64 bg-accent/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
           <div className="relative z-10">
             <div className="inline-flex items-center gap-2 bg-accent/20 border border-accent/30 rounded-full px-4 py-1.5 text-xs font-semibold text-accent mb-6 uppercase tracking-widest">
-              Manufacturer Directory
+              Supplier Directory
             </div>
             <h1 className="font-syne font-black text-2xl sm:text-4xl md:text-6xl text-white mb-4 md:mb-6 uppercase tracking-tighter leading-[1.1]">
-              Verified <span className="text-accent underline decoration-orange-500/30">Manufacturers</span> <br className="hidden sm:block" /> & Suppliers
+              Verified <span className="text-accent underline decoration-orange-500/30">Suppliers</span> <br className="hidden sm:block" /> & Manufacturers
             </h1>
             <p className="text-white/60 text-sm md:text-lg max-w-2xl mx-auto mb-10 leading-relaxed px-4">
-              Connect directly with premium packaging film manufacturers across India. 
+              Connect directly with premium packaging film suppliers across India. 
               Get direct factory prices and authentic business leads.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
@@ -81,7 +81,7 @@ export default function SellerPage() {
                 onClick={() => navigate("/become-a-seller")}
                 className="w-full sm:w-auto bg-accent text-white px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl sm:rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-widest hover:bg-orange-600 transition-all flex items-center justify-center gap-2 shadow-xl shadow-orange-900/20"
               >
-                Join as Manufacturer <ArrowRight size={16} />
+                Join as Supplier <ArrowRight size={16} />
               </button>
               <button 
                 onClick={() => navigate("/contact")}
@@ -109,7 +109,7 @@ export default function SellerPage() {
         ) : sellers.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-[3rem] border border-gray-100">
              <Store size={48} className="mx-auto text-gray-200 mb-4" />
-             <h3 className="text-lg font-bold text-gray-900">No manufacturers listed yet.</h3>
+             <h3 className="text-lg font-bold text-gray-900">No suppliers listed yet.</h3>
              <p className="text-gray-500 text-sm">Be the first one to list your products.</p>
           </div>
         ) : (

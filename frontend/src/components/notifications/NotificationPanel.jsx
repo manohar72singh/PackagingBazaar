@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
 import { useSocket } from "../../context/SocketContext";
 import { API_BASE_URL } from "../../services/api";
-import { Bell, Check, Trash2 } from "lucide-react";
+import { Bell, Check, Trash2, ArrowRight } from "lucide-react";
+import { toast } from "react-hot-toast";
 
 const NotificationPanel = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -10,11 +12,20 @@ const NotificationPanel = () => {
   const { unreadCount, setUnreadCount, fetchUnreadCount } = useSocket();
   const panelRef = useRef(null);
 
+  const [activeFilter, setActiveFilter] = useState("all");
+
   useEffect(() => {
     if (isOpen) {
       fetchNotifications();
     }
   }, [isOpen]);
+
+  const filteredNotifications = notifications.filter((n) => {
+    if (activeFilter === "all") return true;
+    if (activeFilter === "lead") return n.type === "lead";
+    if (activeFilter === "registration") return n.type === "registration";
+    return true;
+  });
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -64,6 +75,24 @@ const NotificationPanel = () => {
     }
   };
 
+  const dismissAll = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/api/notifications/dismiss-all`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNotifications([]);
+        setUnreadCount(0);
+        toast.success("Panel cleared");
+      }
+    } catch (error) {
+      console.error("Error dismissing:", error);
+    }
+  };
+
   return (
     <div className="relative" ref={panelRef}>
       {/* Bell Icon */}
@@ -82,28 +111,58 @@ const NotificationPanel = () => {
       {/* Dropdown Panel */}
       {isOpen && (
         <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden transform origin-top-right transition-all animate-in fade-in zoom-in duration-200">
-          <div className="p-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
-            <h3 className="font-bold text-gray-800">Notifications</h3>
-            {notifications.length > 0 && (
-              <button
-                onClick={() => markAsRead("all")}
-                className="text-xs text-blue-600 hover:text-blue-800 font-semibold"
-              >
-                Mark all as read
-              </button>
-            )}
+          <div className="p-4 border-b border-gray-50 bg-gray-50/50">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-bold text-gray-800">Notifications</h3>
+              <div className="flex gap-2">
+                {notifications.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => markAsRead("all")}
+                      className="text-[10px] text-blue-600 hover:text-blue-800 font-black uppercase tracking-widest"
+                    >
+                      Read All
+                    </button>
+                    <span className="text-gray-300">|</span>
+                    <button
+                      onClick={dismissAll}
+                      className="text-[10px] text-red-500 hover:text-red-700 font-black uppercase tracking-widest"
+                    >
+                      Clear
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+            
+            {/* Filter Tabs */}
+            <div className="flex gap-1 bg-gray-200/50 p-1 rounded-lg">
+              {['all', 'lead', 'registration'].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setActiveFilter(f)}
+                  className={`flex-1 py-1 text-[10px] font-black uppercase tracking-wider rounded-md transition-all ${
+                    activeFilter === f 
+                    ? "bg-white text-blue-600 shadow-sm" 
+                    : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {f === 'registration' ? 'Sellers' : f}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="max-h-[400px] overflow-y-auto">
             {loading ? (
               <div className="p-8 text-center text-gray-400 text-sm">Loading...</div>
-            ) : notifications.length === 0 ? (
+            ) : filteredNotifications.length === 0 ? (
               <div className="p-10 text-center">
                 <Bell className="mx-auto text-gray-200 mb-2" size={40} />
-                <p className="text-gray-400 text-sm">No notifications yet</p>
+                <p className="text-gray-400 text-sm">No {activeFilter === 'all' ? '' : activeFilter} notifications</p>
               </div>
             ) : (
-              notifications.map((n) => (
+              filteredNotifications.map((n) => (
                 <div
                   key={n.id}
                   className={`p-4 border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer relative ${
@@ -131,10 +190,22 @@ const NotificationPanel = () => {
                       <p className="text-xs text-gray-500 leading-relaxed mb-2">
                         {n.message}
                       </p>
-                      <div className="flex justify-between items-center">
-                         <span className="text-[10px] text-gray-400">
+                      <div className="flex justify-between items-center mt-2">
+                         <span className="text-[10px] text-gray-400 font-medium">
                           {new Date(n.created_at).toLocaleDateString()}
                         </span>
+                        {n.link && (
+                          <a 
+                            href={n.link} 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!n.is_read) markAsRead(n.id);
+                            }}
+                            className="text-[10px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-widest flex items-center gap-1"
+                          >
+                            View Details <ArrowRight size={10} />
+                          </a>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -144,9 +215,13 @@ const NotificationPanel = () => {
           </div>
 
           <div className="p-3 text-center border-t border-gray-50 bg-gray-50/30">
-             <button className="text-xs text-gray-500 hover:text-gray-700 font-medium">
+             <Link 
+               to="/admin/notifications" 
+               onClick={() => setIsOpen(false)}
+               className="text-xs text-gray-500 hover:text-gray-700 font-bold uppercase tracking-widest"
+             >
                View All History
-             </button>
+             </Link>
           </div>
         </div>
       )}

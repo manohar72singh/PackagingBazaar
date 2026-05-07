@@ -99,6 +99,7 @@ export default function ContactPage() {
                 name="phone"
                 value={formData.phone}
                 onChange={handleChange}
+                maxLength={10}
                 placeholder="Phone Number"
                 className="border border-black/10 rounded-xl px-4 py-3 text-sm bg-surface focus:outline-none focus:border-accent w-full"
               />

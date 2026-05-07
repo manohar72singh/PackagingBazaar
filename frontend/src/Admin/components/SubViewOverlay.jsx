@@ -196,7 +196,7 @@ export default function SubViewOverlay({ entity, onClose }) {
                   const isBest = sortBy === "match" && idx === 0;
                   
                   return (
-                    <div key={seller.id} className={`p-8 rounded-[2.5rem] border transition-all shadow-sm ${isBest ? "bg-orange-50/50 border-accent/30 shadow-orange-100" : "bg-white border-gray-100"}`}>
+                    <div key={`seller-${seller.id}`} className={`p-8 rounded-[2.5rem] border transition-all shadow-sm ${isBest ? "bg-orange-50/50 border-accent/30 shadow-orange-100" : "bg-white border-gray-100"}`}>
                       <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
@@ -220,9 +220,19 @@ export default function SubViewOverlay({ entity, onClose }) {
                                  </span>
                                </p>
                                {seller.distance_km !== undefined && (
-                                 <div className="bg-accent/10 text-accent px-3 py-1 rounded-xl text-[10px] font-black flex items-center gap-1.5 shadow-sm shadow-accent/5">
-                                   <Navigation size={12} />
-                                   {parseFloat(seller.distance_km).toFixed(1)} km away
+                                 <div className="flex flex-col gap-1.5 items-end">
+                                   <div className="bg-accent/10 text-accent px-3 py-1 rounded-xl text-[10px] font-black flex items-center gap-1.5 shadow-sm shadow-accent/5">
+                                     <Navigation size={12} />
+                                     {seller.road_distance_km ? `${seller.road_distance_km} km (Road)` : `${parseFloat(seller.distance_km).toFixed(1)} km (Aerial)`}
+                                   </div>
+                                   {seller.duration_min && (
+                                      <div className="bg-green-50 text-green-600 px-3 py-1 rounded-xl text-[10px] font-black flex items-center gap-1.5 border border-green-100">
+                                        <Zap size={12} />
+                                        {seller.duration_min >= 60 
+                                          ? `${Math.floor(seller.duration_min / 60)}h ${seller.duration_min % 60}m` 
+                                          : `${seller.duration_min} mins`} travel
+                                      </div>
+                                   )}
                                  </div>
                                )}
                              </div>

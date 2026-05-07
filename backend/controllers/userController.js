@@ -1,5 +1,6 @@
 import pool from "../config/db.js";
 import { validateMobile } from "../utils/validation.js";
+import { getCoordinates } from "../utils/geoUtils.js";
 
 // 1. Get Logged-in User Profile
 export const getUserProfile = async (req, res) => {
@@ -70,6 +71,12 @@ export const addAddress = async (req, res) => {
     );
 
     await connection.commit();
+
+    // Background update of coordinates to ensure DB accuracy
+    if (pincode) {
+      getCoordinates(pincode, true).catch(err => console.error("Error updating buyer coordinates:", err));
+    }
+
     res.status(201).json({ success: true, message: "Address added successfully!", addressId: result.insertId });
   } catch (err) {
     await connection.rollback();
@@ -104,6 +111,12 @@ export const updateAddress = async (req, res) => {
     }
 
     await connection.commit();
+
+    // Background update of coordinates
+    if (pincode) {
+      getCoordinates(pincode, true).catch(err => console.error("Error updating buyer coordinates:", err));
+    }
+
     res.status(200).json({ success: true, message: "Address updated successfully!" });
   } catch (err) {
     await connection.rollback();

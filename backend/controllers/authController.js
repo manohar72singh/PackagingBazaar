@@ -6,6 +6,7 @@ import fs from "fs";
 import { validateEmail, validateMobile, validateGST, validatePassword } from "../utils/validation.js";
 import { sendEmail } from "../utils/mailHelper.js";
 import { sendNotification } from "../utils/notificationHelper.js";
+import { getCoordinates } from "../utils/geoUtils.js";
 
 const generateSellerUID = () => `PB-S-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
@@ -149,6 +150,12 @@ export const registerSeller = async (req, res) => {
 
     await connection.commit();
 
+    // 4. Pre-fetch and cache Seller Coordinates for Distance Matching (Force Refresh to keep DB Current)
+    if (pincode) {
+      // We run this in the background (no await) to keep registration fast
+      getCoordinates(pincode, true).catch(err => console.error("Error updating seller coordinates:", err));
+    }
+
     // --- EMAIL & IN-APP NOTIFICATIONS ---
     try {
       // 1. Notify Admins (Email + In-App)
@@ -178,7 +185,8 @@ export const registerSeller = async (req, res) => {
           userRole: 'admin',
           title: adminSubject,
           message: adminMessage,
-          type: 'registration'
+          type: 'registration',
+          link: '/admin/pending-sellers'
         });
       }
 

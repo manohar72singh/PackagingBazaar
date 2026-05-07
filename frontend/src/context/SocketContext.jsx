@@ -21,6 +21,10 @@ export const SocketProvider = ({ children }) => {
       setSocket(newSocket);
 
       newSocket.on("new_notification", (notification) => {
+        // Play notification sound
+        const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3");
+        audio.play().catch(e => console.log("Audio play failed:", e));
+
         notifyInfo(`${notification.title}: ${notification.message}`);
         setUnreadCount((prev) => prev + 1);
       });

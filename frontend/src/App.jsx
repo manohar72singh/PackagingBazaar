@@ -42,6 +42,8 @@ import AdminEditSeller from "./Admin/pages/AdminEditSeller";
 import AdminEditProduct from "./Admin/pages/AdminEditProduct";
 import AdminContacts from "./Admin/pages/AdminContacts";
 import AdminReviews from "./Admin/pages/AdminReviews";
+import AdminBroadcast from "./Admin/pages/AdminBroadcast";
+import AdminNotifications from "./Admin/pages/AdminNotifications";
 
 // Seller
 import { SellerDashboard, SellerProducts, SellerOrders, SellerLeads, SellerProfile } from "./Seller/SellerDashboard";
@@ -100,6 +102,8 @@ export default function App() {
                   <Route path="/admin/inquiries" element={<AdminInquiries />} />
                   <Route path="/admin/contacts" element={<AdminContacts />} />
                   <Route path="/admin/reviews" element={<AdminReviews />} />
+                  <Route path="/admin/broadcast" element={<AdminBroadcast />} />
+                  <Route path="/admin/notifications" element={<AdminNotifications />} />
                   <Route path="/admin/seller-hub" element={<AdminSellerHub />} />
                   <Route path="/admin/add-product" element={<AdminAddProduct />} />
                   <Route path="/admin/add-seller" element={<AdminAddSeller />} />

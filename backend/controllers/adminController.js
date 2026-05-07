@@ -4,7 +4,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { sendNotification } from "../utils/notificationHelper.js";
-import { getCoordinates } from "../utils/geoUtils.js";
+import { getCoordinates, getRoadMetrics } from "../utils/geoUtils.js";
 import { sendEmail } from "../utils/mailHelper.js";
 
 // --- SELLER MANAGEMENT ---
@@ -134,7 +134,8 @@ export const updateSellerStatus = async (req, res) => {
           userRole: 'seller',
           title: title,
           message: message,
-          type: 'status'
+          type: 'status',
+          link: '/seller/dashboard'
         });
       } catch (notifErr) {
         console.error("Notification Error:", notifErr);
@@ -796,7 +797,7 @@ export const getRecommendedSellers = async (req, res) => {
     const bLng = leadCoords?.longitude || 0;
 
     // 2. Fetch all verified sellers with smart matching logic
-    // New IndiaMART Style Layered Filtering & Smart Scoring (Max ~1000 Pts)
+    // New IndiaMART Style Layered Filtering & Smart Scoring (Max ~1500 Pts)
     // - Distance: 0-10km (200), 10-50km (150), 50-100km (100), 100km+ (50/fallback)
     // - Location: City (50), State (20) - fallback if lat/lng missing
     // - Specifications Match: Exact (150), Custom/All/Null (100), Mismatch (0)
@@ -807,16 +808,17 @@ export const getRecommendedSellers = async (req, res) => {
       SELECT * FROM (
         SELECT s.id as seller_id, s.company_name, s.city, s.state, s.pincode, s.business_address as address, s.status as seller_status,
         u.email, u.mobile as phone, u.name as owner_name,
-        -- Distance Calculation
-        (6371 * acos(cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))) AS distance_km,
+        pg.latitude as seller_lat, pg.longitude as seller_lng,
+        -- Distance Calculation (Using Robust Law of Cosines with NaN Protection)
+        (6371 * acos(LEAST(1, GREATEST(-1, cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))))) AS distance_km,
         
-        -- Location Score Breakdown
+        -- Location Score Breakdown (Max 200)
         (
           CASE 
-            WHEN (6371 * acos(cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))) <= 10 THEN 200
-            WHEN (6371 * acos(cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))) <= 50 THEN 150
-            WHEN (6371 * acos(cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))) <= 100 THEN 100
-            WHEN (6371 * acos(cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))) <= 300 THEN 50
+            WHEN (6371 * acos(LEAST(1, GREATEST(-1, cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))))) <= 10 THEN 200
+            WHEN (6371 * acos(LEAST(1, GREATEST(-1, cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))))) <= 50 THEN 150
+            WHEN (6371 * acos(LEAST(1, GREATEST(-1, cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))))) <= 100 THEN 100
+            WHEN (6371 * acos(LEAST(1, GREATEST(-1, cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))))) <= 300 THEN 50
             WHEN s.pincode = ? THEN 150
             WHEN LOWER(s.city) = LOWER(?) OR LOWER(?) LIKE CONCAT('%', LOWER(s.city), '%') THEN 50 
             WHEN LOWER(s.state) = LOWER(?) OR LOWER(?) LIKE CONCAT('%', LOWER(s.state), '%') THEN 20 
@@ -827,6 +829,7 @@ export const getRecommendedSellers = async (req, res) => {
             ELSE 0 
           END
         ) as location_score,
+
 
         -- Product Score Breakdown
         COALESCE((
@@ -845,12 +848,15 @@ export const getRecommendedSellers = async (req, res) => {
             END +
             CASE WHEN sp.stock_qty >= ? THEN 100 ELSE 0 END +
             CASE 
-              WHEN LOWER(sp.width) = LOWER(?) THEN 150 
+              WHEN REGEXP_REPLACE(LOWER(sp.width), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '') THEN 150 
               WHEN sp.width IS NULL OR LOWER(sp.width) IN ('all', 'custom', 'any') THEN 100
               ELSE 0 
             END +
             CASE 
-              WHEN EXISTS (SELECT 1 FROM products p3 WHERE p3.id = sp.product_id AND LOWER(p3.thickness) = LOWER(?)) THEN 150 
+              WHEN EXISTS (SELECT 1 FROM products p3 WHERE p3.id = sp.product_id AND (
+                REGEXP_REPLACE(LOWER(p3.thickness), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '') OR 
+                p3.thickness REGEXP CONCAT('\\\\b', REGEXP_REPLACE(?, '[^0-9.]', ''), '\\\\b')
+              )) THEN 150 
               WHEN EXISTS (SELECT 1 FROM products p3 WHERE p3.id = sp.product_id AND (p3.thickness IS NULL OR LOWER(p3.thickness) IN ('all', 'custom', 'any'))) THEN 100
               ELSE 0 
             END
@@ -883,6 +889,8 @@ export const getRecommendedSellers = async (req, res) => {
               AND sc_filter.category_id = ?
               AND sp_filter.stock_qty >= ? 
               AND sp_filter.moq <= ? 
+              AND (REGEXP_REPLACE(LOWER(sp_filter.width), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '') OR LOWER(sp_filter.width) IN ('all', 'any', 'custom', 'any', 'none') OR sp_filter.width IS NULL)
+              AND (REGEXP_REPLACE(LOWER(p_filter.thickness), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '') OR p_filter.thickness REGEXP CONCAT('\\\\b', REGEXP_REPLACE(?, '[^0-9.]', ''), '\\\\b') OR LOWER(p_filter.thickness) IN ('all', 'any', 'custom', 'any', 'none') OR p_filter.thickness IS NULL)
           )
       ) as t
       ORDER BY (location_score + product_score) DESC, (CASE WHEN distance_km IS NULL THEN 1 ELSE 0 END) ASC, distance_km ASC, best_price ASC
@@ -891,12 +899,12 @@ export const getRecommendedSellers = async (req, res) => {
     const [sellers] = await pool.query(query, [
       bLat, bLng, bLat, // for distance_km (3)
       
-      // for location_score (19)
+      // for location_score (12 + 7 = 19)
       bLat, bLng, bLat, bLat, bLng, bLat, bLat, bLng, bLat, bLat, bLng, bLat,
       lead.pincode, lead.city, lead.address, lead.state, lead.address, lead.state, lead.state,
 
-      // for product_score (4)
-      leadQty, leadWidth, leadThickness, lead.category_id,
+      // for product_score (5)
+      leadQty, leadWidth, leadThickness, leadThickness, lead.category_id,
 
       // for matches (11)
       lead.pincode, lead.city, lead.address, lead.state, lead.address,
@@ -908,13 +916,25 @@ export const getRecommendedSellers = async (req, res) => {
       // for best_price and is_assigned (2)
       lead.category_id, lead.id,
 
-      // for WHERE clause Hard Filters (3)
-      lead.category_id, leadQty, leadQty
+      // for WHERE clause Hard Filters (6)
+      lead.category_id, leadQty, leadQty, leadWidth, leadThickness, leadThickness
     ]);
+
+    // 2.1 Fetch Real Road Metrics for top 5 sellers (Only if coordinates exist)
+    const enrichedSellers = await Promise.all(sellers.map(async (seller, idx) => {
+      // Use idx < 5 to limit API calls (saves cost/latency)
+      if (idx < 5 && bLat && bLng && seller.seller_lat && seller.seller_lng) {
+        const roadMetrics = await getRoadMetrics(bLat, bLng, seller.seller_lat, seller.seller_lng);
+        if (roadMetrics) {
+          return { ...seller, ...roadMetrics };
+        }
+      }
+      return seller;
+    }));
 
     res.status(200).json({ 
       success: true, 
-      recommendations: sellers,
+      recommendations: enrichedSellers,
       leadLocation: { city: lead.city, state: lead.state },
       leadRequirements: { qty: leadQty, thickness: leadThickness, width: leadWidth }
     });

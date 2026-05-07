@@ -33,7 +33,7 @@ export const sendNotification = async ({ userId, userRole, title, message, type,
     }
 
     // 4. Send Email
-    if (userEmail) {
+    if (userEmail && !arguments[0].skipEmail) {
       const emailHtml = `
         <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
           <h2 style="color: #2563eb;">PackagingBazaar Update</h2>

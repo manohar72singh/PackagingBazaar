@@ -1,5 +1,6 @@
 import pool from "../config/db.js";
 import { sendNotification } from "../utils/notificationHelper.js";
+import { getCoordinates } from "../utils/geoUtils.js";
 
 // 1. Submit a Buyer Inquiry (Lead)
 export const submitInquiry = async (req, res) => {
@@ -55,6 +56,11 @@ export const submitInquiry = async (req, res) => {
         ];
 
         const [result] = await pool.query(query, values);
+        
+        // Background update of coordinates for distance matching accuracy
+        if (pincode) {
+            getCoordinates(pincode, true).catch(err => console.error("Error updating lead coordinates:", err));
+        }
 
         // Notify Admin
         try {
@@ -66,7 +72,7 @@ export const submitInquiry = async (req, res) => {
                     title: 'New Bulk Inquiry Received',
                     message: `New requirement received for product ID: ${product_id} from ${buyer_name || 'a Buyer'}.`,
                     type: 'lead',
-                    link: '/admin/leads'
+                    link: '/admin/inquiries'
                 });
             }
         } catch (notifErr) {

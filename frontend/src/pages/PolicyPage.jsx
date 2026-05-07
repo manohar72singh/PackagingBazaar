@@ -1,8 +1,25 @@
-import React from "react";
+import React, { useEffect } from "react";
+import { useLocation } from "react-router-dom";
 
 export default function PolicyPage() {
+  const { hash } = useLocation();
+
+  useEffect(() => {
+    if (hash) {
+      const element = document.getElementById(hash.substring(1));
+      if (element) {
+        setTimeout(() => {
+          element.scrollIntoView({ behavior: "smooth" });
+        }, 100);
+      }
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [hash]);
+
   const sections = [
     {
+      id: "privacy-policy",
       title: "Privacy Policy",
       icon: (
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -16,6 +33,7 @@ export default function PolicyPage() {
       ),
     },
     {
+      id: "return-policy",
       title: "Return & Refund Policy",
       icon: (
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -48,6 +66,7 @@ export default function PolicyPage() {
       ),
     },
     {
+      id: "shipping-policy",
       title: "Shipping & Delivery Policy",
       icon: (
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -76,6 +95,7 @@ export default function PolicyPage() {
       ),
     },
     {
+      id: "terms-of-use",
       title: "Terms of Use",
       icon: (
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -121,6 +141,7 @@ export default function PolicyPage() {
       ),
     },
     {
+      id: "quality-assurance",
       title: "Quality Assurance",
       icon: (
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -179,6 +200,7 @@ export default function PolicyPage() {
           {sections.map((s, index) => (
             <div
               key={s.title}
+              id={s.id}
               className="bg-white rounded-[2rem] p-8 md:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-black/[0.04] transition-all duration-300 hover:shadow-[0_8px_40px_rgb(0,0,0,0.08)] hover:-translate-y-1 relative overflow-hidden group"
             >
               <div className="absolute top-0 left-0 w-1.5 h-full bg-accent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>

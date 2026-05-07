@@ -62,7 +62,7 @@ export default function Footer() {
               {[
                 ["About Us", "/about"],
                 ["Contact Us", "/contact"],
-                ["Become a Seller", "/contact"],
+                ["Become a Seller", "/become-a-seller"],
                 ["Blog", "#"],
               ].map(([l, h]) => (
                 <li key={l}>
@@ -79,10 +79,10 @@ export default function Footer() {
             </h4>
             <ul className="space-y-3 text-sm">
               {[
-                ["Privacy Policy", "/policy"],
-                ["Return Policy", "/policy"],
-                ["Terms of Use", "/policy"],
-                ["Shipping Policy", "/policy"],
+                ["Privacy Policy", "/policy#privacy-policy"],
+                ["Return Policy", "/policy#return-policy"],
+                ["Terms of Use", "/policy#terms-of-use"],
+                ["Shipping Policy", "/policy#shipping-policy"],
               ].map(([l, h]) => (
                 <li key={l}>
                   <Link to={h} className="hover:text-accent transition-colors block py-0.5">
