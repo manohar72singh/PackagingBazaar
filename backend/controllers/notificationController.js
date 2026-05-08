@@ -3,24 +3,37 @@ import pool from "../config/db.js";
 export const getNotifications = async (req, res) => {
   try {
     const userId = req.user.id;
-    const showAll = req.query.all === 'true';
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
+    const { all, page, limit, search, type } = req.query;
+    const isShowAll = all === 'true';
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
+    const offset = (pageNum - 1) * limitNum;
     
     let whereClause = "WHERE user_id = ?";
-    if (!showAll) {
+    const params = [userId];
+
+    if (!isShowAll) {
       whereClause += " AND is_dismissed = 0";
+    }
+
+    if (type && type !== 'all') {
+      whereClause += " AND type = ?";
+      params.push(type);
+    }
+
+    if (search) {
+      whereClause += " AND (title LIKE ? OR message LIKE ?)";
+      params.push(`%${search}%`, `%${search}%`);
     }
 
     const [rows] = await pool.query(
       `SELECT * FROM notifications ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [userId, limit, offset]
+      [...params, limitNum, offset]
     );
 
     const [[{ total }]] = await pool.query(
       `SELECT COUNT(*) as total FROM notifications ${whereClause}`,
-      [userId]
+      params
     );
 
     res.json({ 

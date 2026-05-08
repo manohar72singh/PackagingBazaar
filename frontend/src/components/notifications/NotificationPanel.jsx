@@ -180,8 +180,13 @@ const NotificationPanel = () => {
                     </div>
                     <div className="flex-1">
                       <div className="flex justify-between items-start mb-1">
-                        <p className={`text-sm font-bold ${!n.is_read ? 'text-gray-900' : 'text-gray-600'}`}>
+                        <p className={`text-sm font-bold flex items-center gap-2 ${!n.is_read ? 'text-gray-900' : 'text-gray-600'}`}>
                           {n.title}
+                          {n.notification_count > 1 && (
+                            <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                              {n.notification_count}
+                            </span>
+                          )}
                         </p>
                         {!n.is_read && (
                           <span className="w-2 h-2 bg-blue-600 rounded-full mt-1"></span>

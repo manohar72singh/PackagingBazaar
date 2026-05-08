@@ -19,15 +19,33 @@ const AdminNotifications = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
+  // Handle page changes immediately
   useEffect(() => {
     fetchNotifications();
-  }, [page]); // Re-fetch on page change
+  }, [page]);
+
+  // Handle search and filter changes with debounce
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (page === 1) {
+        fetchNotifications();
+      } else {
+        setPage(1); // This will trigger the page useEffect
+      }
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm, filter]);
 
   const fetchNotifications = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE_URL}/api/notifications?all=true&page=${page}&limit=10`, {
+      let url = `${API_BASE_URL}/api/notifications?all=true&page=${page}&limit=10`;
+      if (filter !== 'all') url += `&type=${filter}`;
+      if (searchTerm) url += `&search=${encodeURIComponent(searchTerm)}`;
+
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -109,14 +127,6 @@ const AdminNotifications = () => {
     }
   };
 
-  // Local filter for search (since backend doesn't search yet)
-  const filteredNotifications = notifications.filter(n => {
-    const matchesFilter = filter === 'all' || n.type === filter;
-    const matchesSearch = n.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         n.message.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesFilter && matchesSearch;
-  });
-
   return (
     <div className="max-w-5xl mx-auto py-4">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -183,13 +193,13 @@ const AdminNotifications = () => {
           Array(5).fill(0).map((_, i) => (
             <div key={i} className="h-24 bg-gray-100 animate-pulse rounded-2xl" />
           ))
-        ) : filteredNotifications.length === 0 ? (
+        ) : notifications.length === 0 ? (
           <div className="bg-white rounded-3xl p-20 text-center border border-gray-100">
             <Bell size={60} className="mx-auto text-gray-200 mb-4" />
             <p className="text-gray-400 font-bold">No records found.</p>
           </div>
         ) : (
-          filteredNotifications.map((n) => (
+          notifications.map((n) => (
             <div 
               key={n.id}
               className={`group bg-white p-5 rounded-2xl border transition-all hover:border-blue-200 flex items-start gap-4 ${
@@ -212,8 +222,13 @@ const AdminNotifications = () => {
               
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start mb-1">
-                  <h3 className={`text-sm font-black truncate ${!n.is_read ? 'text-gray-900' : 'text-gray-600'}`}>
+                  <h3 className={`text-sm font-black truncate flex items-center gap-2 ${!n.is_read ? 'text-gray-900' : 'text-gray-600'}`}>
                     {n.title}
+                    {n.notification_count > 1 && (
+                      <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                        {n.notification_count}
+                      </span>
+                    )}
                   </h3>
                   <span className="text-[10px] font-bold text-gray-400 whitespace-nowrap ml-4">
                     {new Date(n.created_at).toLocaleString()}
