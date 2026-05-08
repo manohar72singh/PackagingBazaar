@@ -2,7 +2,7 @@ import pool from "../config/db.js";
 import { getIO, getReceiverSocketId } from "../socket.js";
 import { sendEmail } from "./mailHelper.js";
 
-export const sendNotification = async ({ userId, userRole, title, message, type, link }) => {
+export const sendNotification = async ({ userId, userRole, title, message, type, link, skipEmail = false }) => {
   try {
     // 1. Check if an unread notification of the same type already exists for this user
     const [existing] = await pool.query(
@@ -68,7 +68,7 @@ export const sendNotification = async ({ userId, userRole, title, message, type,
     }
 
     // 4. Send Email
-    if (userEmail && !arguments[0].skipEmail) {
+    if (userEmail && !skipEmail) {
       const emailHtml = `
         <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 5px;">
           <h2 style="color: #2563eb;">PackagingBazaar Update</h2>
@@ -82,7 +82,7 @@ export const sendNotification = async ({ userId, userRole, title, message, type,
       await sendEmail(userEmail, title, message, emailHtml);
     }
 
-    return result.insertId;
+    return notificationId;
   } catch (error) {
     console.error("Error in sendNotification:", error);
   }

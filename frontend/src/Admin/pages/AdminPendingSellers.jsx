@@ -33,6 +33,7 @@ export default function AdminPendingSellers() {
     message: "",
     mobile: "",
   });
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     loadSellers(1);
@@ -250,13 +251,18 @@ export default function AdminPendingSellers() {
                 Cancel
               </button>
               <button 
+                disabled={submitting}
                 onClick={async () => {
                   const { userId, newStatus, message, mobile } = statusModal;
                   if (!message) return notifyError("Please enter a status message");
+                  setSubmitting(true);
                   try {
                     let res;
                     if (newStatus === "rejected") {
-                      if (!window.confirm("Are you sure you want to PERMANENTLY decline and delete this seller?")) return;
+                      if (!window.confirm("Are you sure you want to PERMANENTLY decline and delete this seller?")) {
+                        setSubmitting(false);
+                        return;
+                      }
                       res = await rejectSellerAccount(userId);
                     } else {
                       res = await updateSellerStatus(userId, newStatus);
@@ -273,15 +279,24 @@ export default function AdminPendingSellers() {
                     }
                   } catch (err) {
                     notifyError("Failed to update status");
+                  } finally {
+                    setSubmitting(false);
                   }
                 }}
-                className={`flex-[2] px-8 py-4 text-white rounded-2xl font-black uppercase text-xs shadow-lg transition-all active:scale-95 ${
+                className={`flex-[2] px-8 py-4 text-white rounded-2xl font-black uppercase text-xs shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70 disabled:scale-100 ${
                   statusModal.newStatus === 'verified' ? 'bg-green-600 shadow-green-200' :
                   statusModal.newStatus === 'hold' ? 'bg-orange-500 shadow-orange-200' :
                   'bg-red-600 shadow-red-200'
                 }`}
               >
-                Confirm & Notify
+                {submitting ? (
+                  <>
+                    <RefreshCcw size={16} className="animate-spin" />
+                    Confirming...
+                  </>
+                ) : (
+                  "Confirm & Notify"
+                )}
               </button>
             </div>
           </div>
