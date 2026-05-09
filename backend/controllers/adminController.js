@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import csvParser from "csv-parser";
 import { sendNotification } from "../utils/notificationHelper.js";
 import { getCoordinates, getRoadMetrics } from "../utils/geoUtils.js";
 import { sendEmail } from "../utils/mailHelper.js";
@@ -117,11 +118,9 @@ export const updateSellerStatus = async (req, res) => {
 
     // 2. If status is 'verified' or 'hold', notify the seller
     if (status === 'verified' || status === 'hold') {
-      if (status === 'verified') {
-        await connection.query("UPDATE users SET is_verified = 1 WHERE id = ?", [id]);
-      } else {
-        await connection.query("UPDATE users SET is_verified = 0 WHERE id = ?", [id]);
-      }
+      const isVerified = status === 'verified' ? 1 : 0;
+      await connection.query("UPDATE users SET is_verified = ? WHERE id = ?", [isVerified, id]);
+      await connection.query("UPDATE sellers SET is_verified = ? WHERE user_id = ?", [isVerified, id]);
       
       try {
         const title = status === 'verified' ? 'Account Verified!' : 'Account on Hold';
@@ -849,7 +848,7 @@ export const getRecommendedSellers = async (req, res) => {
             CASE WHEN sp.stock_qty >= ? THEN 100 ELSE 0 END +
             CASE 
               WHEN REGEXP_REPLACE(LOWER(sp.width), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '') THEN 150 
-              WHEN sp.width IS NULL OR LOWER(sp.width) IN ('all', 'custom', 'any') THEN 100
+              WHEN sp.width IS NULL OR LOWER(sp.width) REGEXP 'all|custom|any|none' THEN 100
               ELSE 0 
             END +
             CASE 
@@ -857,24 +856,25 @@ export const getRecommendedSellers = async (req, res) => {
                 REGEXP_REPLACE(LOWER(p3.thickness), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '') OR 
                 p3.thickness REGEXP CONCAT('\\\\b', REGEXP_REPLACE(?, '[^0-9.]', ''), '\\\\b')
               )) THEN 150 
-              WHEN EXISTS (SELECT 1 FROM products p3 WHERE p3.id = sp.product_id AND (p3.thickness IS NULL OR LOWER(p3.thickness) IN ('all', 'custom', 'any'))) THEN 100
+              WHEN EXISTS (SELECT 1 FROM products p3 WHERE p3.id = sp.product_id AND (p3.thickness IS NULL OR LOWER(p3.thickness) REGEXP 'all|custom|any|none')) THEN 100
               ELSE 0 
             END
           )
           FROM seller_products sp
           JOIN products p_check ON sp.product_id = p_check.id
           JOIN sub_categories sc_check ON p_check.sub_category_id = sc_check.id
-          WHERE sp.seller_id = s.id AND sp.status = 'active' AND sc_check.category_id = ?
+          WHERE sp.seller_id = s.id AND sp.status = 'active' AND (sc_check.category_id = ? OR (LOWER(sp.width) REGEXP 'all|any|custom' AND LOWER(p_check.thickness) REGEXP 'all|any|custom'))
         ), 0) as product_score,
 
         (s.pincode = ?) as pincode_match,
         (LOWER(s.city) = LOWER(?) OR LOWER(?) LIKE CONCAT('%', LOWER(s.city), '%')) as city_match,
         (LOWER(s.state) = LOWER(?) OR LOWER(?) LIKE CONCAT('%', LOWER(s.state), '%')) as state_match,
-        EXISTS (SELECT 1 FROM seller_products sp2 JOIN products p2 ON sp2.product_id = p2.id JOIN sub_categories sc2 ON p2.sub_category_id = sc2.id WHERE sp2.seller_id = s.id AND sc2.category_id = ? AND sp2.stock_qty >= ? ) as has_stock,
-        EXISTS (SELECT 1 FROM seller_products sp3 JOIN products p3 ON sp3.product_id = p3.id JOIN sub_categories sc3 ON p3.sub_category_id = sc3.id WHERE sp3.seller_id = s.id AND sc3.category_id = ? AND sp3.moq <= ? ) as moq_fit,
-        EXISTS (SELECT 1 FROM seller_products sp4 JOIN products p4 ON sp4.product_id = p4.id JOIN sub_categories sc4 ON p4.sub_category_id = sc4.id WHERE sp4.seller_id = s.id AND sc4.category_id = ? AND sp4.price_min <= (SELECT COALESCE(AVG(price_min), sp4.price_min) FROM seller_products WHERE product_id = sp4.product_id) ) as price_match,
-        (SELECT MIN(delivery_hours) FROM seller_products sp5 JOIN products p5 ON sp5.product_id = p5.id JOIN sub_categories sc5 ON p5.sub_category_id = sc5.id WHERE sp5.seller_id = s.id AND sc5.category_id = ? AND sp5.status = 'active') as best_delivery_hours,
-        (SELECT MIN(price_min) FROM seller_products sp_p JOIN products p_p ON sp_p.product_id = p_p.id JOIN sub_categories sc_p ON p_p.sub_category_id = sc_p.id WHERE sp_p.seller_id = s.id AND sc_p.category_id = ? AND sp_p.status = 'active') as best_price,
+        EXISTS (SELECT 1 FROM seller_products sp2 JOIN products p2 ON sp2.product_id = p2.id JOIN sub_categories sc2 ON p2.sub_category_id = sc2.id WHERE sp2.seller_id = s.id AND (sc2.category_id = ? OR (LOWER(sp2.width) REGEXP 'all|any|custom' AND LOWER(p2.thickness) REGEXP 'all|any|custom')) AND sp2.stock_qty >= ? ) as has_stock,
+        EXISTS (SELECT 1 FROM seller_products sp3 JOIN products p3 ON sp3.product_id = p3.id JOIN sub_categories sc3 ON p3.sub_category_id = sc3.id WHERE sp3.seller_id = s.id AND (sc3.category_id = ? OR (LOWER(sp3.width) REGEXP 'all|any|custom' AND LOWER(p3.thickness) REGEXP 'all|any|custom')) AND sp3.moq <= ? ) as moq_fit,
+        EXISTS (SELECT 1 FROM seller_products sp4 JOIN products p4 ON sp4.product_id = p4.id JOIN sub_categories sc4 ON p4.sub_category_id = sc4.id WHERE sp4.seller_id = s.id AND (sc4.category_id = ? OR (LOWER(sp4.width) REGEXP 'all|any|custom' AND LOWER(p4.thickness) REGEXP 'all|any|custom')) AND sp4.price_min <= (SELECT COALESCE(AVG(price_min), sp4.price_min) FROM seller_products WHERE product_id = sp4.product_id) ) as price_match,
+        (SELECT MIN(delivery_hours) FROM seller_products sp5 JOIN products p5 ON sp5.product_id = p5.id JOIN sub_categories sc5 ON p5.sub_category_id = sc5.id WHERE sp5.seller_id = s.id AND sp5.status = 'active' AND (sc5.category_id = ? OR (LOWER(sp5.width) REGEXP 'all|any|custom' AND LOWER(p5.thickness) REGEXP 'all|any|custom'))) as best_delivery_hours,
+        (SELECT MIN(price_min) FROM seller_products sp_p JOIN products p_p ON sp_p.product_id = p_p.id JOIN sub_categories sc_p ON p_p.sub_category_id = sc_p.id WHERE sp_p.seller_id = s.id AND sp_p.status = 'active' AND (sc_p.category_id = ? OR (LOWER(sp_p.width) REGEXP 'all|any|custom' AND LOWER(p_p.thickness) REGEXP 'all|any|custom'))) as best_price,
+        EXISTS (SELECT 1 FROM seller_products sp6 JOIN products p6 ON sp6.product_id = p6.id JOIN sub_categories sc6 ON p6.sub_category_id = sc6.id WHERE sp6.seller_id = s.id AND sc6.category_id = ?) as category_match,
         EXISTS (SELECT 1 FROM lead_assignments la WHERE la.seller_id = s.id AND la.inquiry_id = ?) as is_assigned
         FROM sellers s
         JOIN users u ON s.user_id = u.id
@@ -886,38 +886,48 @@ export const getRecommendedSellers = async (req, res) => {
             JOIN sub_categories sc_filter ON p_filter.sub_category_id = sc_filter.id
             WHERE sp_filter.seller_id = s.id 
               AND sp_filter.status = 'active'
-              AND sc_filter.category_id = ?
+              AND sc_filter.category_id = ? -- Category is now mandatory (Fixes leak)
+              AND (
+                -- Specific Specs Match OR Generalist Match
+                (
+                  (REGEXP_REPLACE(LOWER(sp_filter.width), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '') OR LOWER(sp_filter.width) REGEXP 'all|any|custom|none' OR sp_filter.width IS NULL)
+                  AND 
+                  (REGEXP_REPLACE(LOWER(p_filter.thickness), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '') OR p_filter.thickness REGEXP CONCAT('\\\\b', REGEXP_REPLACE(?, '[^0-9.]', ''), '\\\\b') OR LOWER(p_filter.thickness) REGEXP 'all|any|custom|none' OR p_filter.thickness IS NULL)
+                )
+                OR p_filter.group_key = ? -- Group Key Match (User suggestion)
+              )
               AND sp_filter.stock_qty >= ? 
               AND sp_filter.moq <= ? 
-              AND (REGEXP_REPLACE(LOWER(sp_filter.width), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '') OR LOWER(sp_filter.width) IN ('all', 'any', 'custom', 'any', 'none') OR sp_filter.width IS NULL)
-              AND (REGEXP_REPLACE(LOWER(p_filter.thickness), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '') OR p_filter.thickness REGEXP CONCAT('\\\\b', REGEXP_REPLACE(?, '[^0-9.]', ''), '\\\\b') OR LOWER(p_filter.thickness) IN ('all', 'any', 'custom', 'any', 'none') OR p_filter.thickness IS NULL)
           )
       ) as t
-      ORDER BY (location_score + product_score) DESC, (CASE WHEN distance_km IS NULL THEN 1 ELSE 0 END) ASC, distance_km ASC, best_price ASC
+      ORDER BY (CASE WHEN distance_km IS NULL THEN 1 ELSE 0 END) ASC, distance_km ASC, product_score DESC, best_price ASC
     `;
 
     const [sellers] = await pool.query(query, [
-      bLat, bLng, bLat, // for distance_km (3)
+      bLat, bLng, bLat, // distance_km
       
-      // for location_score (12 + 7 = 19)
+      // location_score
       bLat, bLng, bLat, bLat, bLng, bLat, bLat, bLng, bLat, bLat, bLng, bLat,
       lead.pincode, lead.city, lead.address, lead.state, lead.address, lead.state, lead.state,
 
-      // for product_score (5)
+      // product_score
       leadQty, leadWidth, leadThickness, leadThickness, lead.category_id,
 
-      // for matches (11)
+      // matches checks
       lead.pincode, lead.city, lead.address, lead.state, lead.address,
-      lead.category_id, leadQty, // has_stock
-      lead.category_id, leadQty, // moq_fit
-      lead.category_id, // price_match
-      lead.category_id, // best_delivery_hours
+      lead.category_id, leadQty, 
+      lead.category_id, leadQty, 
+      lead.category_id, 
+      lead.category_id, 
+      lead.category_id, lead.category_id, lead.id,
 
-      // for best_price and is_assigned (2)
-      lead.category_id, lead.id,
-
-      // for WHERE clause Hard Filters (6)
-      lead.category_id, leadQty, leadQty, leadWidth, leadThickness, leadThickness
+      // WHERE clause filters (Now correctly ordered)
+      lead.category_id, // Mandatory category
+      leadWidth, // width match
+      leadThickness, leadThickness, // thickness match
+      lead.group_key || 'NA', // Group key match
+      leadQty > 0 ? leadQty : 0, // stock (0 means no filter)
+      leadQty > 0 ? leadQty : 999999  // moq (999999 means any MOQ is fine)
     ]);
 
     // 2.1 Fetch Real Road Metrics for top 5 sellers (Only if coordinates exist)
@@ -1325,33 +1335,39 @@ export const exportDataAdmin = async (req, res) => {
     let data = [];
     let filename = `export_${entity}_${new Date().toISOString().split('T')[0]}.csv`;
 
-    if (entity === "leads") {
+    if (entity === "leads" || entity === "inquiries") {
       const [rows] = await pool.query(`
         SELECT i.id as LeadID, i.created_at as Date, i.status as Status,
                COALESCE(u.name, i.buyer_name) as BuyerName,
                COALESCE(u.mobile, i.phone) as BuyerPhone,
                COALESCE(u.email, i.buyer_email) as BuyerEmail,
-               p.name as Product, i.quantity_required as Qty,
-               i.thickness, i.width, i.city, i.state, i.pincode,
-               s.company_name as AssignedSeller,
-               ws.company_name as WinningSeller,
-               i.lost_reason as LostReason,
-               i.admin_notes as AdminNotes
+               p.name as Product, p.product_code as ProductCode,
+               i.quantity_required as Qty, i.thickness, i.width,
+               i.city, i.state, i.pincode, i.address,
+               i.message as Requirements,
+               COALESCE(
+                 (SELECT GROUP_CONCAT(s2.company_name SEPARATOR ', ') 
+                  FROM lead_assignments la 
+                  JOIN sellers s2 ON la.seller_id = s2.id 
+                  WHERE la.inquiry_id = i.id),
+                 'Not Assigned'
+               ) as AssignedToSellers,
+               i.lost_reason as LostReason, i.admin_notes as AdminNotes
         FROM inquiries i
         LEFT JOIN users u ON i.buyer_id = u.id
         JOIN products p ON i.product_id = p.id
-        LEFT JOIN sellers s ON i.seller_id = s.id
         LEFT JOIN sellers ws ON i.won_seller_id = ws.id
         ORDER BY i.id DESC
       `);
       data = rows;
     } else if (entity === "sellers") {
       const [rows] = await pool.query(`
-        SELECT s.id as SellerID, s.company_name as Company, u.name as Owner,
-               u.email, s.mobile as Phone, s.gst_number as GST,
+        SELECT s.id as SellerID, s.seller_uid as SellerUID, s.company_name as Company, 
+               u.name as Owner, u.email, s.mobile as Phone, s.gst_number as GST,
+               s.business_type as BusinessType, s.year_established as EstYear,
                s.city, s.state, s.pincode, s.business_address as Address,
-               s.business_type as Type, s.status as Status,
-               s.is_verified as Verified, s.created_at as JoinedDate
+               s.description as Description, s.status as Status,
+               u.is_verified as IsVerified, s.created_at as JoinedDate
         FROM sellers s
         JOIN users u ON s.user_id = u.id
         ORDER BY s.id DESC
@@ -1359,24 +1375,29 @@ export const exportDataAdmin = async (req, res) => {
       data = rows;
     } else if (entity === "products") {
       const [rows] = await pool.query(`
-        SELECT p.id as ProductID, p.name as ProductName, 
+        SELECT p.id as ProductID, p.name as ProductName, p.display_name as DisplayName,
+               p.product_code as ProductCode, p.group_key as GroupKey,
                c.name as Category, sc.name as SubCategory,
-               p.thickness, p.width, p.color, p.applications as Applications,
-               p.min_price as PriceMin, p.max_price as PriceMax,
-               p.unit,
-               (SELECT COUNT(*) FROM seller_products sp WHERE sp.product_id = p.id) as SellerCount
+               p.product_type as Type, p.thickness, p.width, p.color, p.unit,
+               COALESCE(sp.price_min, 0) as PriceMin, COALESCE(sp.price_max, 0) as PriceMax,
+               p.is_trending as Trending, p.is_hot_deal as HotDeal,
+               p.delivery_time as DeliveryTime, p.applications as Applications,
+               (SELECT COUNT(*) FROM seller_products sp2 WHERE sp2.product_id = p.id) as SellerCount
         FROM products p
         JOIN sub_categories sc ON p.sub_category_id = sc.id
         JOIN categories c ON sc.category_id = c.id
+        LEFT JOIN seller_products sp ON p.id = sp.product_id
         ORDER BY p.id DESC
       `);
       data = rows;
     } else if (entity === "inventory") {
       const [rows] = await pool.query(`
-        SELECT sp.id as InventoryID, s.company_name as Seller, p.name as Product,
-               sp.price_min as SellerPrice, sp.stock_qty as Stock, sp.moq as MOQ,
+        SELECT sp.id as InventoryID, s.company_name as Seller, s.seller_uid as SellerUID,
+               p.name as Product, p.product_code as ProductCode,
+               sp.price_min as MinPrice, sp.price_max as MaxPrice, 
+               sp.stock_qty as Stock, sp.moq as MOQ,
                sp.delivery_hours as DeliveryHours, sp.status as ListingStatus,
-               p.thickness, p.width, p.color
+               p.thickness, p.width, p.color, p.unit
         FROM seller_products sp
         JOIN sellers s ON sp.seller_id = s.id
         JOIN products p ON sp.product_id = p.id
@@ -1414,6 +1435,122 @@ export const exportDataAdmin = async (req, res) => {
   } catch (error) {
     console.error(`Error exporting ${entity}:`, error);
     res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// 25. Bulk Upload Products via CSV + Images
+export const bulkUploadProducts = async (req, res) => {
+  const { sellerUserId } = req.params;
+  const files = req.files;
+
+  if (!files || !files.csvFile) {
+    return res.status(400).json({ success: false, message: "CSV file is required" });
+  }
+
+  const csvPath = files.csvFile[0].path;
+  const imageFiles = files.images || [];
+  const results = [];
+  let successCount = 0;
+  let errorCount = 0;
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 1. Get seller_id from user_id
+    const [sellerRows] = await connection.query("SELECT id FROM sellers WHERE user_id = ?", [sellerUserId]);
+    if (sellerRows.length === 0) {
+      return res.status(404).json({ success: false, message: "Seller profile not found" });
+    }
+    const sellerId = sellerRows[0].id;
+
+    // 2. Parse CSV
+    const rows = [];
+    await new Promise((resolve, reject) => {
+      fs.createReadStream(csvPath)
+        .pipe(csvParser())
+        .on('data', (row) => rows.push(row))
+        .on('end', resolve)
+        .on('error', reject);
+    });
+
+    // 3. Process each row
+    for (const row of rows) {
+      try {
+        const {
+          Category, SubCategory, Tag, ProductName, DisplayName, 
+          Thickness, Width, Color, ProductType, ProductCode, 
+          Unit, MinPrice, MaxPrice, Stock, MOQ, DeliveryHours, 
+          Description, ImageName, Applications
+        } = row;
+
+        if (!Category || !SubCategory || !ProductName) continue;
+
+        // Resolve Category/Sub/Tag
+        const catId = await resolveEntityId(connection, 'categories', 'name', Category);
+        const subCatId = await resolveEntityId(connection, 'sub_categories', 'name', SubCategory, 'category_id', catId);
+        const tagId = await resolveEntityId(connection, 'tags', 'tag_name', Tag);
+
+        // Find matched image
+        let finalImageUrl = null;
+        if (ImageName) {
+          const matchedImg = imageFiles.find(f => f.originalname === ImageName.trim());
+          if (matchedImg) {
+            // Move/Rename is handled by multer to product_images? 
+            // Usually multer saves to a temp or specific dir. 
+            // We need to ensure it's in the PUBLIC path.
+            finalImageUrl = `/uploads/product_images/${matchedImg.filename}`;
+          }
+        }
+
+        // group_key logic
+        const catPart = Category ? Category.toString().toUpperCase().replace(/\s+/g, '_') : 'PRD';
+        const colorPart = Color ? Color.toString().toUpperCase().replace(/\s+/g, '_') : 'NA';
+        const thickPart = (Thickness || "X").toString().replace(/\s+/g, '');
+        const typePart = (ProductType || Color || "NA").toString().substring(0, 3).toUpperCase();
+        const groupKey = `${catPart}_${colorPart}_${thickPart}_${typePart}`;
+
+        // Insert Master Product
+        const [pResult] = await connection.query(
+          `INSERT INTO products 
+           (sub_category_id, tag_id, seller_id, name, display_name, group_key, product_code, thickness, width, color, product_type, unit, description, image_url, applications) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [subCatId, tagId || null, sellerId, ProductName, DisplayName || ProductName, groupKey, ProductCode || null, Thickness || null, Width || null, Color || null, ProductType || null, Unit || 'kg', Description || null, finalImageUrl, JSON.stringify(Applications ? Applications.split(',') : [])]
+        );
+        const productId = pResult.insertId;
+
+        // Insert Seller Product
+        await connection.query(
+          `INSERT INTO seller_products 
+           (product_id, seller_id, price_min, price_max, moq, stock_qty, stock, width, delivery_hours) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [productId, sellerId, parseFloat(MinPrice) || 0, parseFloat(MaxPrice) || 0, parseInt(MOQ) || 100, parseInt(Stock) || 0, (parseInt(Stock) > 0 ? 'Available' : 'Out of Stock'), Width || null, parseInt(DeliveryHours) || 24]
+        );
+
+        successCount++;
+      } catch (rowErr) {
+        console.error("Error processing CSV row:", rowErr);
+        errorCount++;
+      }
+    }
+
+    await connection.commit();
+    
+    // Clean up CSV file (safe delete)
+    try { fs.unlinkSync(csvPath); } catch (_) {}
+
+    res.status(200).json({
+      success: true,
+      message: `Bulk upload completed. ${successCount} success, ${errorCount} errors.`,
+      summary: { success: successCount, errors: errorCount }
+    });
+
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error("Bulk upload error:", error);
+    res.status(500).json({ success: false, message: "Bulk upload failed" });
+  } finally {
+    if (connection) connection.release();
   }
 };
 

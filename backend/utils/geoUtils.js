@@ -100,41 +100,49 @@ export const getRoadMetrics = async (lat1, lon1, lat2, lon2) => {
     const GOOGLE_KEY = process.env.GOOGLE_MAPS_API_KEY;
     const MAPBOX_KEY = process.env.MAPBOX_TOKEN;
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s Timeout
+
     try {
         // 1. Try Google Maps (Best Accuracy & Traffic)
         if (GOOGLE_KEY) {
-            console.log("📍 Using Google Maps API for road metrics...");
-            const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${lat1},${lon1}&destinations=${lat2},${lon2}&key=${GOOGLE_KEY}`;
-            const response = await fetch(url);
-            const data = await response.json();
-            if (data.status === 'OK' && data.rows[0].elements[0].status === 'OK') {
-                const element = data.rows[0].elements[0];
-                return {
-                    road_distance_km: (element.distance.value / 1000).toFixed(1),
-                    duration_min: Math.round(element.duration.value / 60)
-                };
-            }
+            try {
+                const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${lat1},${lon1}&destinations=${lat2},${lon2}&key=${GOOGLE_KEY}`;
+                const response = await fetch(url, { signal: controller.signal });
+                const data = await response.json();
+                if (data.status === 'OK' && data.rows[0].elements[0].status === 'OK') {
+                    const element = data.rows[0].elements[0];
+                    clearTimeout(timeoutId);
+                    return {
+                        road_distance_km: (element.distance.value / 1000).toFixed(1),
+                        duration_min: Math.round(element.duration.value / 60)
+                    };
+                }
+            } catch (e) { console.log("Google Maps API failed, trying others..."); }
         }
 
         // 2. Try Mapbox (Great Accuracy, No Traffic)
         if (MAPBOX_KEY) {
-            console.log("📍 Using Mapbox API for road metrics...");
-            const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${lon1},${lat1};${lon2},${lat2}?access_token=${MAPBOX_KEY}&overview=false`;
-            const response = await fetch(url);
-            const data = await response.json();
-            if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-                return {
-                    road_distance_km: (data.routes[0].distance / 1000).toFixed(1),
-                    duration_min: Math.round((data.routes[0].duration / 60) * 1.3) // 30% Buffer for Mapbox
-                };
-            }
+            try {
+                const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${lon1},${lat1};${lon2},${lat2}?access_token=${MAPBOX_KEY}&overview=false`;
+                const response = await fetch(url, { signal: controller.signal });
+                const data = await response.json();
+                if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                    clearTimeout(timeoutId);
+                    return {
+                        road_distance_km: (data.routes[0].distance / 1000).toFixed(1),
+                        duration_min: Math.round((data.routes[0].duration / 60) * 1.3)
+                    };
+                }
+            } catch (e) { console.log("Mapbox API failed, trying OSRM..."); }
         }
 
         // 3. Fallback to OSRM (Free, Base Estimates)
-        //console.log("📍 Using OSRM (Free) for road metrics...");
         const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`;
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: controller.signal });
         const data = await response.json();
+        clearTimeout(timeoutId);
+
         if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
             const baseDurationMin = data.routes[0].duration / 60;
             return {
@@ -145,7 +153,12 @@ export const getRoadMetrics = async (lat1, lon1, lat2, lon2) => {
 
         return null;
     } catch (error) {
-        console.error("❌ Routing API Error:", error.message);
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+            console.error("❌ Routing API Timeout (8s)");
+        } else {
+            console.error("❌ Routing API Error:", error.message);
+        }
         return null;
     }
 };

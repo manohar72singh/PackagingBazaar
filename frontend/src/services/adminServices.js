@@ -123,6 +123,19 @@ export const shareLeadWithSellerAdmin = async (id, sellerId = null, assignmentNo
   return response.data;
 };
 
+export const bulkUploadProducts = async (sellerUserId, csvFile, images) => {
+  const formData = new FormData();
+  formData.append('csvFile', csvFile);
+  images.forEach(img => {
+    formData.append('images', img);
+  });
+
+  const response = await API.post(`/admin/products/bulk-upload/${sellerUserId}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
 export const addProductForSeller = async (sellerUserId, productData) => {
   const response = await API.post(`/admin/products/seller/${sellerUserId}`, productData);
   return response.data;

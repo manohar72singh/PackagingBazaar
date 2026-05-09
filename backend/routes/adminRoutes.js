@@ -8,7 +8,7 @@ import {
   getRecommendedSellers, addProductForSeller, uploadImage, updateSellerStatus,
   addSellerAdmin, updateSellerDetailsAdmin,
   createCategory, deleteCategory, createSubCategory, deleteSubCategory,
-  getInquiryAssignedSellers, exportDataAdmin
+  getInquiryAssignedSellers, exportDataAdmin, bulkUploadProducts
 } from "../controllers/adminController.js";
 import { getAllContactMessages, updateContactStatus } from "../controllers/contactController.js";
 import { shareLeadToSeller } from "../controllers/inquiryController.js";
@@ -70,5 +70,11 @@ router.put("/contacts/:id", verifyToken, isAdmin, updateContactStatus);
 
 // --- Export Data ---
 router.get("/export/:entity", verifyToken, isAdmin, exportDataAdmin);
+
+// --- Bulk Upload ---
+router.post("/products/bulk-upload/:sellerUserId", verifyToken, isAdmin, upload.fields([
+  { name: 'csvFile', maxCount: 1 },
+  { name: 'images', maxCount: 100 }
+]), bulkUploadProducts);
 
 export default router;

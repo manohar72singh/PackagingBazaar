@@ -39,6 +39,7 @@ export default function AdminInquiries() {
   });
   const { notifyError, notifySuccess } = useNotification();
   const [exporting, setExporting] = useState(false);
+  const [submitting, setSubmitting] = useState(null); // inquiryId
 
   // Get unique lists for filters
   const productNames = [...new Set(inquiries.map(i => i.product_name))].filter(Boolean);
@@ -95,6 +96,7 @@ export default function AdminInquiries() {
   };
 
   const handleStatusChange = async (id, newStatus, extraData = {}) => {
+    setSubmitting(id);
     try {
       const res = await updateInquiryAdmin(id, { status: newStatus, ...extraData });
       if (res.success) {
@@ -104,10 +106,13 @@ export default function AdminInquiries() {
       }
     } catch (err) {
       notifyError("Failed to update status");
+    } finally {
+      setSubmitting(null);
     }
   };
 
   const handleNotesChange = async (id, notes) => {
+    setSubmitting(id);
     try {
       const res = await updateInquiryAdmin(id, { admin_notes: notes });
       if (res.success) {
@@ -116,11 +121,14 @@ export default function AdminInquiries() {
       }
     } catch (err) {
       notifyError("Failed to save notes");
+    } finally {
+      setSubmitting(null);
     }
   };
 
   const handleShareWithSeller = async (inquiry) => {
     if (window.confirm(`Share this lead with ${inquiry.seller_name}? It will appear in their dashboard.`)) {
+      setSubmitting(inquiry.id);
       try {
         const res = await shareLeadWithSellerAdmin(inquiry.id);
         if (res.success) {
@@ -129,6 +137,8 @@ export default function AdminInquiries() {
         }
       } catch (err) {
         notifyError("Failed to share lead");
+      } finally {
+        setSubmitting(null);
       }
     }
   };
@@ -311,16 +321,19 @@ export default function AdminInquiries() {
                     <div className="pl-4">
                       <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-2">Process Status</label>
                       <select 
+                        disabled={submitting === inquiry.id}
                         value={inquiry.status || 'pending'}
                         onChange={(e) => handleStatusClick(inquiry, e.target.value)}
                         className={`w-full text-[11px] font-black uppercase tracking-widest px-4 py-3 rounded-2xl border outline-none transition-all cursor-pointer ${
+                          submitting === inquiry.id ? 'opacity-50 cursor-not-allowed' : ''
+                        } ${
                           inquiry.status === 'Closed' ? 'bg-green-50 border-green-100 text-green-600' :
                           inquiry.status === 'Lost' ? 'bg-red-50 border-red-100 text-red-600' :
                           inquiry.status === 'pending' ? 'bg-orange-50 border-orange-100 text-orange-600' :
                           'bg-blue-50 border-blue-100 text-blue-600'
                         }`}
                       >
-                        <option value="pending">New/Pending</option>
+                        <option value="pending">{submitting === inquiry.id ? 'Updating...' : 'New/Pending'}</option>
                         <option value="Contacted">Contacted</option>
                         <option value="Negotiating">Negotiating</option>
                         <option value="Closed">Deal Closed</option>
@@ -420,10 +433,11 @@ export default function AdminInquiries() {
                       <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Note</span>
                     </div>
                     <textarea 
+                      disabled={submitting === inquiry.id}
                       defaultValue={inquiry.admin_notes || ""}
                       onBlur={(e) => handleNotesChange(inquiry.id, e.target.value)}
-                      placeholder="Add private note..."
-                      className="flex-1 text-[11px] font-medium text-gray-600 px-4 py-1.5 rounded-xl border border-gray-100 bg-slate-50/20 outline-none focus:border-accent focus:bg-white transition-all h-8 resize-none flex items-center"
+                      placeholder={submitting === inquiry.id ? "Saving..." : "Add private note..."}
+                      className={`flex-1 text-[11px] font-medium text-gray-600 px-4 py-1.5 rounded-xl border border-gray-100 bg-slate-50/20 outline-none focus:border-accent focus:bg-white transition-all h-8 resize-none flex items-center ${submitting === inquiry.id ? 'opacity-50' : ''}`}
                     />
                   </div>
                   
@@ -464,6 +478,7 @@ export default function AdminInquiries() {
           modal={statusModal} 
           onClose={() => setStatusModal({ open: false, inquiry: null, status: "", sellers: [] })} 
           onConfirm={handleStatusChange}
+          submitting={submitting === statusModal.inquiry?.id}
         />
       )}
 
@@ -587,10 +602,12 @@ function StatusModal({ modal, onClose, onConfirm }) {
             Cancel
           </button>
           <button 
+            disabled={modal.submitting}
             onClick={handleConfirm}
-            className={`flex-1 py-4 rounded-2xl text-xs font-black uppercase text-white shadow-lg transition-all ${modal.status === 'Closed' ? 'bg-green-500 hover:bg-green-600 shadow-green-100' : 'bg-red-500 hover:bg-red-600 shadow-red-100'}`}
+            className={`flex-1 py-4 rounded-2xl text-xs font-black uppercase text-white shadow-lg transition-all flex items-center justify-center gap-2 ${modal.status === 'Closed' ? 'bg-green-500 hover:bg-green-600 shadow-green-100' : 'bg-red-500 hover:bg-red-600 shadow-red-100'} disabled:opacity-50`}
           >
-            Confirm {modal.status === 'Closed' ? 'Success' : 'Lost'}
+            {modal.submitting ? <RefreshCcw size={14} className="animate-spin" /> : null}
+            {modal.submitting ? "Updating..." : `Confirm ${modal.status === 'Closed' ? 'Success' : 'Lost'}`}
           </button>
         </div>
       </div>

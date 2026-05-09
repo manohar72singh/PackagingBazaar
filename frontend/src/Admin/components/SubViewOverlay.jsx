@@ -70,7 +70,10 @@ export default function SubViewOverlay({ entity, onClose }) {
     window.open(url, '_blank');
   };
 
+  const [submitting, setSubmitting] = useState(false);
+
   const handleSendToDashboard = async () => {
+    setSubmitting(true);
     try {
       const res = await shareLeadWithSellerAdmin(entity.id, shareModal.seller.id, shareModal.note);
       if (res.success) {
@@ -82,6 +85,8 @@ export default function SubViewOverlay({ entity, onClose }) {
       }
     } catch (err) {
       notifyError("Failed to share lead");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -114,11 +119,18 @@ export default function SubViewOverlay({ entity, onClose }) {
     if (sortBy === "price") return (a.best_price || 999999) - (b.best_price || 999999);
     if (sortBy === "distance") return (a.distance_km || 999999) - (b.distance_km || 999999);
     if (sortBy === "dispatch") return (a.best_delivery_hours || 999999) - (b.best_delivery_hours || 999999);
-    // Default: Sort by Match Score (descending)
+    
+    // Default (Best Match): Prioritize Distance as requested by User
+    // We still use score as a tie-breaker if distance is exactly same
+    const distA = (a.distance_km !== undefined && a.distance_km !== null) ? parseFloat(a.distance_km) : 999999;
+    const distB = (b.distance_km !== undefined && b.distance_km !== null) ? parseFloat(b.distance_km) : 999999;
+    
+    if (distA !== distB) return distA - distB;
+    
+    // If distance is same, use total score as tie-breaker
     const scoreA = (a.location_score || 0) + (a.product_score || 0);
     const scoreB = (b.location_score || 0) + (b.product_score || 0);
-    if (scoreB !== scoreA) return scoreB - scoreA;
-    return (a.distance_km || 999999) - (b.distance_km || 999999); // Distance as primary tie-breaker
+    return scoreB - scoreA;
   });
 
   return (
@@ -292,16 +304,19 @@ export default function SubViewOverlay({ entity, onClose }) {
             
             <div className="flex gap-3 justify-end">
               <button 
+                disabled={submitting}
                 onClick={() => setShareModal({ open: false, seller: null, note: "" })}
-                className="px-6 py-3 rounded-xl text-xs font-black uppercase text-gray-500 hover:bg-gray-100 transition-colors"
+                className="px-6 py-3 rounded-xl text-xs font-black uppercase text-gray-500 hover:bg-gray-100 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button 
+                disabled={submitting}
                 onClick={handleSendToDashboard}
-                className="px-6 py-3 rounded-xl text-xs font-black uppercase bg-accent text-white hover:bg-accent/90 transition-colors flex items-center gap-2"
+                className="px-6 py-3 rounded-xl text-xs font-black uppercase bg-accent text-white hover:bg-accent/90 transition-colors flex items-center gap-2 shadow-lg disabled:opacity-50"
               >
-                <Zap size={14} /> Confirm Assignment
+                {submitting ? <RefreshCcw size={14} className="animate-spin" /> : <Zap size={14} />}
+                {submitting ? "Assigning..." : "Confirm Assignment"}
               </button>
             </div>
           </div>

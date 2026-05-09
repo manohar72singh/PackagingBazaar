@@ -8,7 +8,8 @@ import {
   Clock, 
   Settings, 
   XCircle,
-  RefreshCcw
+  RefreshCcw,
+  Upload
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { 
@@ -21,6 +22,7 @@ import {
 import { useNotification } from "../../context/NotificationContext";
 import { API_BASE_URL } from "../../services/api";
 import Pagination from "../../components/ui/Pagination";
+import BulkUploadModal from "../components/BulkUploadModal";
 
 const inputCls = "w-full px-4 py-2.5 text-sm border border-black/[0.1] rounded-xl bg-slate-50 focus:outline-none focus:bg-white focus:border-accent transition-colors text-ink placeholder:text-slate-400 font-medium";
 
@@ -53,6 +55,8 @@ export default function AdminSellers() {
     message: "",
     mobile: "",
   });
+  const [submitting, setSubmitting] = useState(false);
+  const [bulkModal, setBulkModal] = useState({ isOpen: false, seller: null });
 
   useEffect(() => {
     loadSellers(1);
@@ -219,6 +223,13 @@ export default function AdminSellers() {
                         >
                           <Settings size={16} />
                         </button>
+                        <button 
+                          onClick={() => setBulkModal({ isOpen: true, seller: seller })}
+                          className="p-2.5 bg-accent/5 text-accent rounded-xl hover:bg-accent hover:text-white transition-all"
+                          title="Bulk Add Products"
+                        >
+                          <Upload size={16} />
+                        </button>
                         <button
                           onClick={() => setStatusModal({
                             isOpen: true,
@@ -264,6 +275,14 @@ export default function AdminSellers() {
         )}
       </div>
 
+      {/* Modals */}
+      <BulkUploadModal 
+        isOpen={bulkModal.isOpen}
+        onClose={() => setBulkModal({ isOpen: false, seller: null })}
+        seller={bulkModal.seller}
+        onComplete={() => loadSellers(currentPage)}
+      />
+
       {statusModal.isOpen && (
         <div className="fixed inset-0 z-[101] flex items-center justify-center p-4">
           <div onClick={() => setStatusModal({ ...statusModal, isOpen: false })} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
@@ -297,13 +316,18 @@ export default function AdminSellers() {
                 Cancel
               </button>
               <button 
+                disabled={submitting}
                 onClick={async () => {
                   const { userId, newStatus, message, mobile } = statusModal;
                   if (!message) return notifyError("Please enter a status message");
+                  setSubmitting(true);
                   try {
                     let res;
                     if (newStatus === "rejected") {
-                      if (!window.confirm("Are you sure you want to PERMANENTLY delete this seller?")) return;
+                      if (!window.confirm("Are you sure you want to PERMANENTLY delete this seller?")) {
+                        setSubmitting(false);
+                        return;
+                      }
                       res = await rejectSellerAccount(userId);
                     } else {
                       res = await updateSellerStatus(userId, newStatus);
@@ -320,15 +344,24 @@ export default function AdminSellers() {
                     }
                   } catch (err) {
                     notifyError("Failed to update status");
+                  } finally {
+                    setSubmitting(false);
                   }
                 }}
-                className={`flex-[2] px-8 py-4 text-white rounded-2xl font-black uppercase text-xs shadow-lg transition-all active:scale-95 ${
+                className={`flex-[2] px-8 py-4 text-white rounded-2xl font-black uppercase text-xs shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70 disabled:scale-100 ${
                   statusModal.newStatus === 'verified' ? 'bg-green-600 shadow-green-200' :
                   statusModal.newStatus === 'hold' ? 'bg-orange-500 shadow-orange-200' :
                   'bg-red-600 shadow-red-200'
                 }`}
               >
-                Confirm & Notify
+                {submitting ? (
+                  <>
+                    <RefreshCcw size={16} className="animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  "Confirm & Notify"
+                )}
               </button>
             </div>
           </div>
