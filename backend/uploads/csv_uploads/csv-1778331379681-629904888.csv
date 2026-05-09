@@ -1,5 +1,0 @@
-Category,SubCategory,Tag,ProductName,DisplayName,Thickness,Width,Color,ProductType,ProductCode,Unit,MinPrice,MaxPrice,Stock,MOQ,DeliveryHours,Description,ImageName,Applications
-Bopp,film,Feature,BOPP Transparent Film,BOPP Clear Packaging Film,20,1000,Transparent,Standard,BP-001,kg,120.00,180.00,5000,100,24,High clarity BOPP film for packaging applications.,bopp_transparent_film.png,Packaging
-SHRINK,FILM,New,Shrink Wrap Film,PVC Shrink Film Roll,30,800,Clear,PVC,SW-002,kg,95.00,150.00,3000,200,36,Premium PVC shrink film for bottle and product wrapping.,shrink_wrap_film.png,Industrial
-strach,FIlm,Feature,Stretch Film Roll,LLDPE Stretch Wrap,25,500,Transparent,LLDPE,SF-003,kg,110.00,165.00,4000,150,48,Machine grade LLDPE stretch film for pallet wrapping.,stretch_film_roll.png,Wrapping
-Bopp,film,New,BOPP Pearl Film,Pearlized BOPP Film,18,1200,White,Pearlized,BP-004,kg,145.00,210.00,2000,100,24,Pearlized BOPP film with excellent printability.,bopp_pearl_film.png,Labeling
