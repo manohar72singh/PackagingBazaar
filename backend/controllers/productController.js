@@ -39,64 +39,72 @@ export const getProductVariants = async (req, res) => {
     
     if (!current) return res.status(404).json({ success: false, message: "Product not found" });
 
-    let variants = [];
-    
-    // Priority 1: If product belongs to a group (via group_key or product_group_id)
-    if (current.group_key || current.product_group_id) {
-      [variants] = await pool.query(
-        `SELECT p.id as id, 
-                MAX(p.name) as name, 
-                MAX(p.thickness) as thickness, 
-                MAX(p.width) as width, 
-                MAX(p.image_url) as image_url, 
-                MAX(p.color) as color, 
-                MAX(p.product_type) as product_type,
-                COALESCE(MIN(sp.price_min), MAX(p.min_price)) as min_price,
-                COALESCE(MAX(sp.price_max), MAX(p.max_price)) as max_price,
-                COALESCE(SUM(sp.stock_qty), MAX(ps.quantity), 0) as stock_qty,
-                MAX(s.company_name) as seller_name,
-                MAX(s.seller_uid) as seller_uid
-         FROM products p
-         LEFT JOIN seller_products sp ON p.id = sp.product_id AND sp.status = 'active'
-         LEFT JOIN product_stocks ps ON p.id = ps.product_id
-         LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
-         WHERE (p.group_key = ? OR (p.product_group_id IS NOT NULL AND p.product_group_id = ?)) AND p.id != ?
-         GROUP BY p.id
-         LIMIT 20`,
-        [current.group_key, current.product_group_id, id]
-      );
-    }
-    
-    // Priority 2: Fallback to same subcategory if no variants found in group
-    if (variants.length === 0 && current.sub_category_id) {
-      [variants] = await pool.query(
-        `SELECT p.id as id, 
-                MAX(p.name) as name, 
-                MAX(p.thickness) as thickness, 
-                MAX(p.width) as width, 
-                MAX(p.image_url) as image_url, 
-                MAX(p.color) as color, 
-                MAX(p.product_type) as product_type,
-                COALESCE(MIN(sp.price_min), MAX(p.min_price)) as min_price,
-                COALESCE(MAX(sp.price_max), MAX(p.max_price)) as max_price,
-                COALESCE(SUM(sp.stock_qty), MAX(ps.quantity), 0) as stock_qty,
-                MAX(s.company_name) as seller_name,
-                MAX(s.seller_uid) as seller_uid
-         FROM products p
-         LEFT JOIN seller_products sp ON p.id = sp.product_id AND sp.status = 'active'
-         LEFT JOIN product_stocks ps ON p.id = ps.product_id
-         LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
-         WHERE p.sub_category_id = ? AND p.id != ?
-         GROUP BY p.id
-         LIMIT 10`,
-        [current.sub_category_id, id]
-      );
-    }
+    // Increase GROUP_CONCAT limit for Base64 images
+    const connection = await pool.getConnection();
+    try {
+      await connection.query("SET SESSION group_concat_max_len = 10000000");
 
-    res.status(200).json({
-      success: true,
-      variants
-    });
+      let variants = [];
+      
+      // Priority 1: If product belongs to a group (via group_key or product_group_id)
+      if (current.group_key || current.product_group_id) {
+        [variants] = await connection.query(
+          `SELECT p.id as id, 
+                  MAX(p.name) as name, 
+                  MAX(p.thickness) as thickness, 
+                  MAX(p.width) as width, 
+                  MAX(p.image_url) as image_url, 
+                  MAX(p.color) as color, 
+                  MAX(p.product_type) as product_type,
+                  COALESCE(MIN(sp.price_min), MAX(p.min_price)) as min_price,
+                  COALESCE(MAX(sp.price_max), MAX(p.max_price)) as max_price,
+                  COALESCE(SUM(sp.stock_qty), MAX(ps.quantity), 0) as stock_qty,
+                  MAX(s.company_name) as seller_name,
+                  MAX(s.seller_uid) as seller_uid
+           FROM products p
+           LEFT JOIN seller_products sp ON p.id = sp.product_id AND sp.status = 'active'
+           LEFT JOIN product_stocks ps ON p.id = ps.product_id
+           LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
+           WHERE (p.group_key = ? OR (p.product_group_id IS NOT NULL AND p.product_group_id = ?)) AND p.id != ?
+           GROUP BY p.id
+           LIMIT 20`,
+          [current.group_key, current.product_group_id, id]
+        );
+      }
+      
+      // Priority 2: Fallback to same subcategory if no variants found in group
+      if (variants.length === 0 && current.sub_category_id) {
+        [variants] = await connection.query(
+          `SELECT p.id as id, 
+                  MAX(p.name) as name, 
+                  MAX(p.thickness) as thickness, 
+                  MAX(p.width) as width, 
+                  MAX(p.image_url) as image_url, 
+                  MAX(p.color) as color, 
+                  MAX(p.product_type) as product_type,
+                  COALESCE(MIN(sp.price_min), MAX(p.min_price)) as min_price,
+                  COALESCE(MAX(sp.price_max), MAX(p.max_price)) as max_price,
+                  COALESCE(SUM(sp.stock_qty), MAX(ps.quantity), 0) as stock_qty,
+                  MAX(s.company_name) as seller_name,
+                  MAX(s.seller_uid) as seller_uid
+           FROM products p
+           LEFT JOIN seller_products sp ON p.id = sp.product_id AND sp.status = 'active'
+           LEFT JOIN product_stocks ps ON p.id = ps.product_id
+           LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
+           WHERE p.sub_category_id = ? AND p.id != ?
+           GROUP BY p.id
+           LIMIT 10`,
+          [current.sub_category_id, id]
+        );
+      }
+
+      res.status(200).json({
+        success: true,
+        variants
+      });
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     console.error("Error in getProductVariants:", error);
     res.status(500).json({ success: false, message: "Server Error" });
@@ -309,7 +317,7 @@ export const getAllProducts = async (req, res) => {
     // Increase GROUP_CONCAT limit for Base64 images
     const connection = await pool.getConnection();
     try {
-      await connection.query("SET SESSION group_concat_max_len = 1000000");
+      await connection.query("SET SESSION group_concat_max_len = 10000000");
 
       // Execute queries
       const [rows] = await connection.query(dataQuery, [
@@ -342,41 +350,49 @@ export const getProductsBySellers = async (req, res) => {
   try {
     const { limit = 200 } = req.query;
     
-    // Simple query to get all individual products with seller info
-    // We group by p.id to ensure every product variant is its own row
-    const query = `
-      SELECT 
-        p.id as id,
-        MAX(p.name) as name,
-        MAX(p.display_name) as display_name,
-        MAX(p.image_url) as image_url,
-        MAX(p.group_key) as group_key,
-        MAX(s.is_verified) as is_verified,
-        COALESCE(MIN(sp.price_min), MIN(p.min_price), 0) as min_price,
-        COALESCE(MAX(sp.price_max), MAX(p.max_price), 0) as max_price,
-        COALESCE(SUM(sp.stock_qty), MAX(ps.quantity), 0) as stock, 
-        COALESCE(MIN(sp.moq), MIN(ps.min_order), 100) as min_order,
-        MAX(s.company_name) as seller_name, 
-        MAX(s.seller_uid) as seller_uid,
-        MAX(s.id) as seller_id,
-        MAX(s.city) as city, 
-        MAX(s.state) as state
-      FROM products p
-      LEFT JOIN seller_products sp ON p.id = sp.product_id AND sp.status = 'active'
-      LEFT JOIN product_stocks ps ON p.id = ps.product_id
-      LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
-      WHERE s.id IS NOT NULL
-      GROUP BY p.id, s.id
-      ORDER BY s.id ASC, p.id ASC
-      LIMIT ?
-    `;
+    // Increase GROUP_CONCAT limit for Base64 images
+    const connection = await pool.getConnection();
+    try {
+      await connection.query("SET SESSION group_concat_max_len = 10000000");
 
-    const [rows] = await pool.query(query, [parseInt(limit)]);
+      // Simple query to get all individual products with seller info
+      // We group by p.id to ensure every product variant is its own row
+      const query = `
+        SELECT 
+          p.id as id,
+          MAX(p.name) as name,
+          MAX(p.display_name) as display_name,
+          MAX(p.image_url) as image_url,
+          MAX(p.group_key) as group_key,
+          MAX(s.is_verified) as is_verified,
+          COALESCE(MIN(sp.price_min), MIN(p.min_price), 0) as min_price,
+          COALESCE(MAX(sp.price_max), MAX(p.max_price), 0) as max_price,
+          COALESCE(SUM(sp.stock_qty), MAX(ps.quantity), 0) as stock, 
+          COALESCE(MIN(sp.moq), MIN(ps.min_order), 100) as min_order,
+          MAX(s.company_name) as seller_name, 
+          MAX(s.seller_uid) as seller_uid,
+          MAX(s.id) as seller_id,
+          MAX(s.city) as city, 
+          MAX(s.state) as state
+        FROM products p
+        LEFT JOIN seller_products sp ON p.id = sp.product_id AND sp.status = 'active'
+        LEFT JOIN product_stocks ps ON p.id = ps.product_id
+        LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
+        WHERE s.id IS NOT NULL
+        GROUP BY p.id, s.id
+        ORDER BY s.id ASC, p.id ASC
+        LIMIT ?
+      `;
 
-    res.status(200).json({
-      success: true,
-      data: rows,
-    });
+      const [rows] = await connection.query(query, [parseInt(limit)]);
+
+      res.status(200).json({
+        success: true,
+        data: rows,
+      });
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     console.error("Error in getProductsBySellers:", error);
     res.status(500).json({ success: false, message: "Server Error" });
@@ -389,98 +405,106 @@ export const getProductById = async (req, res) => {
     const { id } = req.params;
     const { sellerId } = req.query;
 
-    const query = `
-  SELECT p.*, MAX(t.tag_name) as tag_name, MAX(sc.name) as subcategory_name, MAX(c.name) as category_name,
-         sc.category_id,
-         COALESCE(
-           MIN(CASE WHEN ? IS NULL OR s.id = ? THEN sp.price_min ELSE NULL END), 
-           MIN(sp.price_min),
-           p.min_price, 
-           0
-         ) as min_price,
-         COALESCE(
-           MAX(CASE WHEN ? IS NULL OR s.id = ? THEN sp.price_max ELSE NULL END), 
-           MAX(sp.price_max),
-           p.max_price, 
-           0
-         ) as max_price,
-         COALESCE(
-           SUM(CASE WHEN ? IS NULL OR s.id = ? THEN sp.stock_qty ELSE 0 END), 
-           MAX(ps.quantity), 
-           0
-         ) as stock, 
-         COALESCE(
-           MIN(CASE WHEN ? IS NULL OR s.id = ? THEN sp.moq ELSE NULL END), 
-           MIN(ps.min_order), 
-           100
-         ) as min_order,
-         SUBSTRING_INDEX(GROUP_CONCAT(s.seller_uid ORDER BY (s.id = ?) DESC, sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_uid, 
-         SUBSTRING_INDEX(GROUP_CONCAT(s.company_name ORDER BY (s.id = ?) DESC, sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_name, 
-         SUBSTRING_INDEX(GROUP_CONCAT(s.id ORDER BY (s.id = ?) DESC, sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_id,
-         MAX(CASE WHEN ? IS NULL OR s.id = ? THEN s.is_verified ELSE 0 END) as is_verified,
-         (SELECT AVG(rating) FROM product_reviews WHERE product_id = p.id AND status = 'approved') as avg_rating,
-         (SELECT COUNT(*) FROM product_reviews WHERE product_id = p.id AND status = 'approved') as review_count,
-         MAX(CASE WHEN ? IS NULL OR s.id = ? THEN sp.delivery_hours ELSE NULL END) as delivery_hours,
-         COALESCE(GROUP_CONCAT(DISTINCT a.app_name), '') as mapped_applications 
-  FROM products p
-  LEFT JOIN tags t ON p.tag_id = t.id
-  LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
-  LEFT JOIN categories c ON sc.category_id = c.id
-  LEFT JOIN seller_products sp ON p.id = sp.product_id AND sp.status = 'active'
-  LEFT JOIN product_stocks ps ON p.id = ps.product_id
-  LEFT JOIN product_application_mapping pam ON p.id = pam.product_id
-  LEFT JOIN applications a ON pam.app_id = a.id
-  LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
-  WHERE p.id = ?
-  GROUP BY p.id
-`;
+    // Increase GROUP_CONCAT limit for Base64 images
+    const connection = await pool.getConnection();
+    try {
+      await connection.query("SET SESSION group_concat_max_len = 10000000");
 
-    const [rows] = await pool.query(query, [
-      sellerId || null, sellerId || null, 
-      sellerId || null, sellerId || null, 
-      sellerId || null, sellerId || null, 
-      sellerId || null, sellerId || null,
-      sellerId || null, sellerId || null, sellerId || null,
-      sellerId || null, sellerId || null, 
-      sellerId || null, sellerId || null,
-      id
-    ]);
+      const query = `
+    SELECT p.*, MAX(t.tag_name) as tag_name, MAX(sc.name) as subcategory_name, MAX(c.name) as category_name,
+           sc.category_id,
+           COALESCE(
+             MIN(CASE WHEN ? IS NULL OR s.id = ? THEN sp.price_min ELSE NULL END), 
+             MIN(sp.price_min),
+             p.min_price, 
+             0
+           ) as min_price,
+           COALESCE(
+             MAX(CASE WHEN ? IS NULL OR s.id = ? THEN sp.price_max ELSE NULL END), 
+             MAX(sp.price_max),
+             p.max_price, 
+             0
+           ) as max_price,
+           COALESCE(
+             SUM(CASE WHEN ? IS NULL OR s.id = ? THEN sp.stock_qty ELSE 0 END), 
+             MAX(ps.quantity), 
+             0
+           ) as stock, 
+           COALESCE(
+             MIN(CASE WHEN ? IS NULL OR s.id = ? THEN sp.moq ELSE NULL END), 
+             MIN(ps.min_order), 
+             100
+           ) as min_order,
+           SUBSTRING_INDEX(GROUP_CONCAT(s.seller_uid ORDER BY (s.id = ?) DESC, sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_uid, 
+           SUBSTRING_INDEX(GROUP_CONCAT(s.company_name ORDER BY (s.id = ?) DESC, sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_name, 
+           SUBSTRING_INDEX(GROUP_CONCAT(s.id ORDER BY (s.id = ?) DESC, sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_id,
+           MAX(CASE WHEN ? IS NULL OR s.id = ? THEN s.is_verified ELSE 0 END) as is_verified,
+           (SELECT AVG(rating) FROM product_reviews WHERE product_id = p.id AND status = 'approved') as avg_rating,
+           (SELECT COUNT(*) FROM product_reviews WHERE product_id = p.id AND status = 'approved') as review_count,
+           MAX(CASE WHEN ? IS NULL OR s.id = ? THEN sp.delivery_hours ELSE NULL END) as delivery_hours,
+           COALESCE(GROUP_CONCAT(DISTINCT a.app_name), '') as mapped_applications 
+    FROM products p
+    LEFT JOIN tags t ON p.tag_id = t.id
+    LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
+    LEFT JOIN categories c ON sc.category_id = c.id
+    LEFT JOIN seller_products sp ON p.id = sp.product_id AND sp.status = 'active'
+    LEFT JOIN product_stocks ps ON p.id = ps.product_id
+    LEFT JOIN product_application_mapping pam ON p.id = pam.product_id
+    LEFT JOIN applications a ON pam.app_id = a.id
+    LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
+    WHERE p.id = ?
+    GROUP BY p.id
+  `;
 
-    if (rows.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Product not found" });
-    }
+      const [rows] = await connection.query(query, [
+        sellerId || null, sellerId || null, 
+        sellerId || null, sellerId || null, 
+        sellerId || null, sellerId || null, 
+        sellerId || null, sellerId || null,
+        sellerId || null, sellerId || null, sellerId || null,
+        sellerId || null, sellerId || null, 
+        sellerId || null, sellerId || null,
+        id
+      ]);
 
-    const product = rows[0];
+      if (rows.length === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Product not found" });
+      }
 
-    // Combine applications from JSON column and Mapping table
-    let apps = [];
-    
-    // 1. From JSON column (p.applications)
-    if (product.applications) {
-      if (Array.isArray(product.applications)) {
-        apps = [...product.applications];
-      } else if (typeof product.applications === "string") {
-        try {
-          const parsed = JSON.parse(product.applications);
-          if (Array.isArray(parsed)) apps = [...parsed];
-          else apps = product.applications.split(",").map(s => s.trim());
-        } catch (e) {
-          apps = product.applications.split(",").map(s => s.trim());
+      const product = rows[0];
+
+      // Combine applications from JSON column and Mapping table
+      let apps = [];
+      
+      // 1. From JSON column (p.applications)
+      if (product.applications) {
+        if (Array.isArray(product.applications)) {
+          apps = [...product.applications];
+        } else if (typeof product.applications === "string") {
+          try {
+            const parsed = JSON.parse(product.applications);
+            if (Array.isArray(parsed)) apps = [...parsed];
+            else apps = product.applications.split(",").map(s => s.trim());
+          } catch (e) {
+            apps = product.applications.split(",").map(s => s.trim());
+          }
         }
       }
+
+      // 2. From Mapping table (mapped_applications)
+      if (product.mapped_applications) {
+        const mapped = product.mapped_applications.split(",").map(s => s.trim());
+        apps = [...new Set([...apps, ...mapped])];
+      }
+
+      product.applications = apps.filter(a => a && a !== "");
+
+      res.status(200).json({ success: true, data: product });
+    } finally {
+      connection.release();
     }
-
-    // 2. From Mapping table (mapped_applications)
-    if (product.mapped_applications) {
-      const mapped = product.mapped_applications.split(",").map(s => s.trim());
-      apps = [...new Set([...apps, ...mapped])];
-    }
-
-    product.applications = apps.filter(a => a && a !== "");
-
-    res.status(200).json({ success: true, data: product });
   } catch (error) {
     console.error("Error in getProductById:", error);
     res.status(500).json({ success: false, message: "Server Error" });
@@ -495,7 +519,7 @@ export const getTopSellingProducts = async (req, res) => {
     // Increase GROUP_CONCAT limit for Base64 images
     const connection = await pool.getConnection();
     try {
-      await connection.query("SET SESSION group_concat_max_len = 1000000");
+      await connection.query("SET SESSION group_concat_max_len = 10000000");
 
       const query = `
         SELECT MAX(p.id) as id, MAX(p.name) as name, MAX(p.description) as description, MAX(p.image_url) as image_url, MAX(p.unit) as unit,
@@ -538,7 +562,7 @@ export const getUniqueTopSelling = async (req, res) => {
     // Increase GROUP_CONCAT limit for Base64 images
     const connection = await pool.getConnection();
     try {
-      await connection.query("SET SESSION group_concat_max_len = 1000000");
+      await connection.query("SET SESSION group_concat_max_len = 10000000");
 
       const query = `
         SELECT
@@ -680,6 +704,22 @@ export const addProduct = async (req, res) => {
       [productId, stock, min_order],
     );
 
+    // 2.1 Sync with seller_products (Crucial for Smart Matching)
+    if (seller_id) {
+      await connection.query(
+        `INSERT INTO seller_products 
+         (product_id, seller_id, price_min, price_max, moq, stock_qty, stock, width) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE 
+         price_min = VALUES(price_min), price_max = VALUES(price_max), moq = VALUES(moq), 
+         stock_qty = VALUES(stock_qty), stock = VALUES(stock)`,
+        [
+          productId, seller_id, minPrice, maxPrice, min_order || 100, stock || 0,
+          (stock > 0 ? 'Available' : 'Out of Stock'), width
+        ]
+      );
+    }
+
     // 3. Resolve and Insert Applications
     if (applications && applications.length > 0) {
       const appIds = [];
@@ -794,6 +834,21 @@ export const updateProduct = async (req, res) => {
         "UPDATE product_stocks SET quantity = COALESCE(?, quantity), min_order = COALESCE(?, min_order) WHERE product_id = ?",
         [stock, minOrder, id]
       );
+
+      // 3.1 Update seller_products as well
+      const [pData] = await connection.query("SELECT seller_id FROM products WHERE id = ?", [id]);
+      if (pData.length > 0 && pData[0].seller_id) {
+        await connection.query(
+          `UPDATE seller_products SET 
+           stock_qty = COALESCE(?, stock_qty), 
+           moq = COALESCE(?, moq),
+           price_min = COALESCE(?, price_min),
+           price_max = COALESCE(?, price_max),
+           stock = CASE WHEN ? > 0 THEN 'Available' ELSE 'Out of Stock' END
+           WHERE product_id = ? AND seller_id = ?`,
+          [stock, minOrder, minPrice, maxPrice, stock, id, pData[0].seller_id]
+        );
+      }
     }
 
     // 4. Update Applications Mapping

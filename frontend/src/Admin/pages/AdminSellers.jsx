@@ -82,7 +82,8 @@ export default function AdminSellers() {
     const s = search.toLowerCase();
     return (
       item.company_name?.toLowerCase().includes(s) ||
-      item.owner_name?.toLowerCase().includes(s)
+      item.owner_name?.toLowerCase().includes(s) ||
+      item.seller_uid?.toLowerCase().includes(s)
     );
   });
 

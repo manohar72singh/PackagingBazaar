@@ -1,4 +1,5 @@
 import express from 'express';
+import 'dotenv/config';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -38,8 +39,16 @@ folders.forEach(folder => {
 });
 
 // Middlewares
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "https://packagingbazaar.co.in", 
+  "http://localhost:5173", 
+  "http://localhost:5000", 
+  "http://localhost:3000"
+].filter(Boolean);
+
 app.use(cors({
-  origin: ["https://packagingbazaar.co.in", "http://localhost:5173", "http://localhost:5000", "http://localhost:3000"],
+  origin: allowedOrigins,
   credentials: true
 }));
 app.use(express.json());
@@ -68,5 +77,5 @@ app.use('/api/blogs', blogRoutes);
 
 
 
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => console.log(`Server running on port ${PORT}`));

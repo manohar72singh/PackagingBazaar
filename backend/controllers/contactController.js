@@ -67,7 +67,7 @@ export const submitContactMessage = async (req, res) => {
                   <p style="margin-bottom: 0; white-space: pre-wrap;">${message}</p>
                 </div>
                 <div style="margin-top: 30px; text-align: center;">
-                  <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/admin/contacts" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold;">View in Dashboard</a>
+                  <a href="${process.env.FRONTEND_URL || 'https://packagingbazaar.co.in'}/admin/contacts" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold;">View in Dashboard</a>
                 </div>
               </div>
             </div>

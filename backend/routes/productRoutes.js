@@ -45,8 +45,8 @@ router.get("/products/group/:groupKey/sellers", getSellersByGroupKey); // FIXED:
 router.get("/products/:id", getProductById);
 router.get("/products/:id/variants", getProductVariants);
 
-// Protected Routes (Seller & Admin)
-router.post("/products/add", verifyToken, isSeller, addProduct);
+// Protected Routes (Admin only for Adding, Seller/Admin for Update/Delete)
+router.post("/products/add", verifyToken, isAdmin, addProduct);
 router.put("/products/update/:id", verifyToken, isSeller, updateProduct);
 router.delete("/products/delete/:id", verifyToken, isSeller, deleteProduct);
 

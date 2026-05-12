@@ -22,70 +22,118 @@ export const calculateDistance = (lat1, lon1, lat2, lon2) => {
 
 /**
  * Get coordinates (Lat/Long) for a given pincode.
- * Checks the database first, then falls back to OpenStreetMap API.
+ * Synchronizes with OpenStreetMap API and updates local database if coordinates differ.
  * @param {string} pincode - Indian Pincode
- * @param {boolean} forceRefresh - If true, skip database and fetch fresh from API
+ * @param {boolean} syncWithApi - If true, always fetch from API to ensure accuracy and update DB
  * @returns {Promise<{latitude: number, longitude: number, city: string, state: string} | null>}
  */
-export const getCoordinates = async (pincode, forceRefresh = false) => {
+export const getCoordinates = async (pincode, syncWithApi = false) => {
     if (!pincode) return null;
     
     // Clean pincode (ensure 6 digits)
     const cleanPincode = pincode.toString().trim().substring(0, 6);
     if (cleanPincode.length !== 6) return null;
 
+    const GOOGLE_KEY = process.env.GOOGLE_MAPS_API_KEY;
+
     try {
-        // 1. Check Database (unless forceRefresh is true)
-        if (!forceRefresh) {
-            const [rows] = await pool.query("SELECT * FROM pincodes_geo WHERE pincode = ?", [cleanPincode]);
-            if (rows.length > 0) {
-                return {
-                    latitude: parseFloat(rows[0].latitude),
-                    longitude: parseFloat(rows[0].longitude),
-                    city: rows[0].city,
-                    state: rows[0].state
-                };
-            }
-        }
-
-        // 2. Fallback to OpenStreetMap Nominatim API
-        console.log(`🌐 Fetching FRESH coordinates for pincode ${cleanPincode} from API...`);
-        
-        // Using q=pincode+India for better precision than postalcode=
-        const url = `https://nominatim.openstreetmap.org/search?q=${cleanPincode}+India&format=json&limit=1`;
-        
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': `PackagingBazaar-App/1.1 (contact: ${process.env.EMAIL_USER || 'admin@packagingbazaar.co.in'})`
-            }
-        });
-
-        if (!response.ok) throw new Error(`API request failed: ${response.status}`);
-
-        const data = await response.json();
-
-        if (data && data.length > 0) {
-            const result = {
-                latitude: parseFloat(data[0].lat),
-                longitude: parseFloat(data[0].lon),
-                city: data[0].display_name.split(',')[0],
-                state: data[0].display_name.split(',').slice(-3, -2)[0]?.trim() || ''
+        let dbResult = null;
+        const [rows] = await pool.query("SELECT * FROM pincodes_geo WHERE pincode = ?", [cleanPincode]);
+        if (rows.length > 0) {
+            dbResult = {
+                latitude: parseFloat(rows[0].latitude),
+                longitude: parseFloat(rows[0].longitude),
+                city: rows[0].city,
+                state: rows[0].state
             };
-
-            // 3. Cache/Update the result in the database
-            await pool.query(
-                "INSERT INTO pincodes_geo (pincode, latitude, longitude, city, state) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE latitude=VALUES(latitude), longitude=VALUES(longitude), city=VALUES(city), state=VALUES(state)",
-                [cleanPincode, result.latitude, result.longitude, result.city, result.state]
-            );
-
-            console.log(`✅ Updated ${cleanPincode}: ${result.latitude}, ${result.longitude}`);
-            return result;
         }
 
-        console.log(`⚠️ No results found for pincode ${cleanPincode}`);
+        // If we have DB result and don't need to sync, return immediately (Performance)
+        if (dbResult && !syncWithApi) {
+            return dbResult;
+        }
+
+        let apiResult = null;
+
+        // 1. Try Google Maps Geocoding (Best Accuracy)
+        if (GOOGLE_KEY) {
+            console.log(`🌐 Syncing coordinates for ${cleanPincode} from Google Maps API...`);
+            try {
+                const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${cleanPincode},+India&key=${GOOGLE_KEY}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.status === 'OK' && data.results.length > 0) {
+                    const loc = data.results[0].geometry.location;
+                    const addressParts = data.results[0].address_components;
+                    
+                    const cityComp = addressParts.find(c => c.types.includes('locality')) || 
+                                   addressParts.find(c => c.types.includes('administrative_area_level_2'));
+                    const stateComp = addressParts.find(c => c.types.includes('administrative_area_level_1'));
+
+                    apiResult = {
+                        latitude: parseFloat(loc.lat),
+                        longitude: parseFloat(loc.lng),
+                        city: cityComp ? cityComp.long_name : '',
+                        state: stateComp ? stateComp.long_name : ''
+                    };
+                }
+            } catch (e) {
+                console.error("Google Geocoding failed, trying OpenStreetMap...", e.message);
+            }
+        }
+
+        // 2. Fallback to OpenStreetMap Nominatim API if Google failed or not provided
+        if (!apiResult) {
+            console.log(`🌐 Syncing coordinates for pincode ${cleanPincode} from OpenStreetMap API...`);
+            const url = `https://nominatim.openstreetmap.org/search?q=${cleanPincode}+India&format=json&limit=1`;
+            
+            const response = await fetch(url, {
+                headers: {
+                    'User-Agent': `PackagingBazaar-App/1.1 (contact: ${process.env.EMAIL_USER || 'admin@packagingbazaar.co.in'})`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data && data.length > 0) {
+                    apiResult = {
+                        latitude: parseFloat(data[0].lat),
+                        longitude: parseFloat(data[0].lon),
+                        city: data[0].display_name.split(',')[0],
+                        state: data[0].display_name.split(',').slice(-3, -2)[0]?.trim() || ''
+                    };
+                }
+            }
+        }
+
+        if (apiResult) {
+            // Check if DB needs update (different coords or missing)
+            const needsUpdate = !dbResult || 
+                Math.abs(dbResult.latitude - apiResult.latitude) > 0.0001 || 
+                Math.abs(dbResult.longitude - apiResult.longitude) > 0.0001;
+
+            if (needsUpdate) {
+                console.log(`♻️ Updating DB for ${cleanPincode} with fresh API coordinates.`);
+                await pool.query(
+                    "INSERT INTO pincodes_geo (pincode, latitude, longitude, city, state) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE latitude=VALUES(latitude), longitude=VALUES(longitude), city=VALUES(city), state=VALUES(state)",
+                    [cleanPincode, apiResult.latitude, apiResult.longitude, apiResult.city, apiResult.state]
+                );
+            }
+            return apiResult;
+        }
+
+        // Final Fallback: If API has no results, use DB if available
+        if (dbResult) {
+            console.log(`⚠️ API returned no results for ${cleanPincode}, using cached DB coordinates.`);
+            return dbResult;
+        }
+
+        console.log(`❌ No coordinates found for pincode ${cleanPincode} in API or DB.`);
         return null;
     } catch (error) {
-        console.error(`❌ Error fetching coordinates for ${cleanPincode}:`, error.message);
+        console.error(`❌ Error in getCoordinates for ${cleanPincode}:`, error.message);
+        if (dbResult) return dbResult;
         return null;
     }
 };

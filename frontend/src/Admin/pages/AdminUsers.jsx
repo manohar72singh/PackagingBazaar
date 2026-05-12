@@ -60,7 +60,8 @@ export default function AdminUsers() {
     const s = search.toLowerCase();
     return (
       item.name?.toLowerCase().includes(s) ||
-      item.email?.toLowerCase().includes(s)
+      item.email?.toLowerCase().includes(s) ||
+      item.seller_uid?.toLowerCase().includes(s)
     );
   });
 

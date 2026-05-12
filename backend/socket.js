@@ -6,7 +6,13 @@ const userSockets = new Map(); // Store userId -> socketId mapping
 export const initSocket = (server) => {
   io = new Server(server, {
     cors: {
-      origin: ["https://packagingbazaar.co.in", "http://localhost:5173", "http://localhost:5000", "http://localhost:3000"],
+      origin: [
+        process.env.FRONTEND_URL,
+        "https://packagingbazaar.co.in",
+        "http://localhost:5173",
+        "http://localhost:5000",
+        "http://localhost:3000"
+      ].filter(Boolean),
       methods: ["GET", "POST"],
       credentials: true
     }

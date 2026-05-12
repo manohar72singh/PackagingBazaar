@@ -1,6 +1,7 @@
 import axios from "axios";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const API_BASE = import.meta.env.VITE_API_BASE_URL || (isLocal ? "http://localhost:5000" : window.location.origin);
 const API_URL = API_BASE.endsWith("/") ? API_BASE.slice(0, -1) : API_BASE;
 
 // Agar hum localhost par hain aur url mein /api nahi hai, toh hum manually '/api' add kar sakte hain
@@ -15,6 +16,9 @@ const API = axios.create({
 export const getImageUrl = (url) => {
   if (!url) return "";
 
+  // Handle absolute URLs or data URLs
+  if (url.startsWith("http") || url.startsWith("data:image")) return url;
+
   // Handle cases where absolute localhost URLs might be stored in the database
   if (url.includes('localhost:5000') || url.includes('127.0.0.1:5000')) {
     const parts = url.split('/uploads/');
@@ -22,10 +26,20 @@ export const getImageUrl = (url) => {
       url = '/uploads/' + parts[1];
     }
   }
+
+  // Ensure path starts correctly
+  let cleanUrl = url;
   
-  if (url.startsWith("http") || url.startsWith("data:image")) return url;
-  
-  const cleanUrl = url.startsWith("/") ? url : `/${url}`;
+  // If it's a raw filename or doesn't have /uploads, try to fix it
+  if (!cleanUrl.startsWith("/uploads") && !cleanUrl.startsWith("uploads")) {
+    // If it looks like a product image filename
+    if (cleanUrl.match(/\.(jpg|jpeg|png|webp|gif|svg)$/i)) {
+      cleanUrl = `/uploads/product_images/${cleanUrl.startsWith("/") ? cleanUrl.slice(1) : cleanUrl}`;
+    }
+  }
+
+  // Ensure leading slash
+  if (!cleanUrl.startsWith("/")) cleanUrl = `/${cleanUrl}`;
   
   // If API_BASE_URL is absolute (starts with http), use it
   if (API_BASE_URL.startsWith('http')) {
@@ -33,10 +47,12 @@ export const getImageUrl = (url) => {
     if (baseUrlForImages.endsWith("/api")) {
       baseUrlForImages = baseUrlForImages.slice(0, -4);
     }
+    // Remove trailing slash if any
+    if (baseUrlForImages.endsWith("/")) baseUrlForImages = baseUrlForImages.slice(0, -1);
+    
     return `${baseUrlForImages}${cleanUrl}`;
   }
   
-  // Otherwise, use relative path (this works if frontend and backend are on same origin)
   return cleanUrl;
 };
 

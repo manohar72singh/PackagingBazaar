@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import { updateSellerProfileAPI, fetchSellerProducts, fetchSellerOrders, fetchSellerLeads, deleteSellerProductAPI } from "../services/sellerServices";
 import { useNotification } from "../context/NotificationContext";
+import { getImageUrl } from "../services/api";
 import Pagination from "../components/ui/Pagination";
 import { motion } from "framer-motion";
 import { TableSkeleton } from "../components/ui/SkeletonLoader";
@@ -35,8 +36,12 @@ export function SellerDashboard() {
         </div>
         {PRODUCTS.length > 0 ? PRODUCTS.slice(0, 3).map(p => (
           <div key={p.id} className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-50 last:border-0">
-            <div className="w-9 h-9 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
-              <Icon d={icons.package} size={16} stroke="#e8511a" />
+            <div className="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-black/5">
+              {p.image_url ? (
+                <img src={getImageUrl(p.image_url)} className="w-full h-full object-cover" alt="" />
+              ) : (
+                <Icon d={icons.package} size={16} stroke="#e8511a" />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="font-semibold text-sm text-gray-800 truncate">{p.name}</div>
@@ -155,10 +160,13 @@ export function SellerProducts() {
                 transition={{ duration: 0.25, delay: idx * 0.05 }}
                 className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 hover:border-orange-200 transition-colors"
               >
-                {/* ... existing card content ... */}
                 <div className="flex items-start gap-3">
-                  <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center shrink-0">
-                    <Icon d={icons.layers} size={22} stroke="#e8511a" />
+                  <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center shrink-0 overflow-hidden border border-black/5">
+                    {p.image_url ? (
+                      <img src={getImageUrl(p.image_url)} className="w-full h-full object-cover" alt="" />
+                    ) : (
+                      <Icon d={icons.layers} size={22} stroke="#e8511a" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">

@@ -78,7 +78,7 @@ export const getAllSellers = async (req, res) => {
              s.created_at, s.status
       FROM users u
       JOIN sellers s ON u.id = s.user_id
-      WHERE u.role = 'seller' AND s.status IN ('verified', 'approved', 'active')
+      WHERE u.role = 'seller' AND s.is_verified = 1
       ORDER BY s.created_at DESC
       LIMIT ? OFFSET ?
     `;
@@ -88,7 +88,7 @@ export const getAllSellers = async (req, res) => {
     const [[{ total }]] = await pool.query(`
       SELECT COUNT(*) as total FROM users u 
       JOIN sellers s ON u.id = s.user_id 
-      WHERE u.role = 'seller' AND s.status IN ('verified', 'approved', 'active')
+      WHERE u.role = 'seller' AND s.is_verified = 1
     `);
 
     res.status(200).json({ 
@@ -141,6 +141,7 @@ export const updateSellerStatus = async (req, res) => {
       }
     } else {
       await connection.query("UPDATE users SET is_verified = 0 WHERE id = ?", [id]);
+      await connection.query("UPDATE sellers SET is_verified = 0 WHERE user_id = ?", [id]);
     }
 
     // 3. Fetch seller mobile for WhatsApp redirect
@@ -792,8 +793,8 @@ export const getRecommendedSellers = async (req, res) => {
 
     // 1.1 Get Lead Coordinates
     const leadCoords = await getCoordinates(lead.pincode);
-    const bLat = leadCoords?.latitude || 0;
-    const bLng = leadCoords?.longitude || 0;
+    const bLat = leadCoords?.latitude || null;
+    const bLng = leadCoords?.longitude || null;
 
     // 2. Fetch all verified sellers with smart matching logic
     // New IndiaMART Style Layered Filtering & Smart Scoring (Max ~1500 Pts)
@@ -1013,9 +1014,9 @@ export const addProductForSeller = async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    // 1. Get seller_id from user_id
+    // 1. Get seller_id and verification status from user_id
     const [sellerRows] = await connection.query(
-      "SELECT id FROM sellers WHERE user_id = ?",
+      "SELECT id, is_verified FROM sellers WHERE user_id = ?",
       [sellerUserId]
     );
 
@@ -1024,7 +1025,16 @@ export const addProductForSeller = async (req, res) => {
       return res.status(404).json({ success: false, message: "Seller profile not found" });
     }
 
-    const sellerId = sellerRows[0].id;
+    const { id: sellerId, is_verified } = sellerRows[0];
+
+    // BLOCK if seller is not verified
+    if (!is_verified) {
+      await connection.rollback();
+      return res.status(403).json({ 
+        success: false, 
+        message: "Action Blocked: This seller is not yet verified. Please verify the seller from the 'Pending Sellers' section first." 
+      });
+    }
 
     // 2. Resolve Category, SubCategory, and Tag (Dynamic Creation if needed)
     const resolvedCategoryId = await resolveEntityId(connection, 'categories', 'name', category);
@@ -1154,6 +1164,9 @@ export const addSellerAdmin = async (req, res) => {
     const sellerUID = `PB-S-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
     const gstCertificate = req.file ? `/uploads/gst_certificates/${req.file.filename}` : null;
     
+    // Get fresh coordinates for registration
+    const coords = await getCoordinates(pincode, true); // SYNC with API for new seller
+    
     // Handle businessType if it's an array
     const businessTypeString = Array.isArray(businessType) 
       ? businessType.join(", ") 
@@ -1165,7 +1178,7 @@ export const addSellerAdmin = async (req, res) => {
       `INSERT INTO sellers 
       (user_id, mobile, status, seller_uid, company_name, business_type, gst_number, gst_certificate, city, state, pincode, business_address, year_established, description, is_verified) 
       VALUES (?, ?, 'verified', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      [userId, mobile, sellerUID, companyName, businessTypeString, gstNumber, gstCertificate, city, state, pincode, businessAddress, yearEstablished || null, description || null]
+      [userId, mobile, sellerUID, companyName, businessTypeString, gstNumber, gstCertificate, coords?.city || city, coords?.state || state, pincode, businessAddress, yearEstablished || null, description || null]
     );
 
     await connection.commit();
@@ -1173,7 +1186,7 @@ export const addSellerAdmin = async (req, res) => {
     // 5. Send Welcome Email to Seller
     try {
       const subject = "Welcome to PackagingBazaar - Seller Account Created";
-      const loginUrl = process.env.FRONTEND_URL || "http://localhost:5173/login";
+      const loginUrl = (process.env.FRONTEND_URL || "https://packagingbazaar.co.in") + "/login";
       const html = `
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 10px; overflow: hidden;">
           <div style="background: #FF5722; padding: 20px; text-align: center;">
@@ -1457,12 +1470,20 @@ export const bulkUploadProducts = async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    // 1. Get seller_id from user_id
-    const [sellerRows] = await connection.query("SELECT id FROM sellers WHERE user_id = ?", [sellerUserId]);
+    // 1. Get seller_id and verification status from user_id
+    const [sellerRows] = await connection.query("SELECT id, is_verified FROM sellers WHERE user_id = ?", [sellerUserId]);
     if (sellerRows.length === 0) {
       return res.status(404).json({ success: false, message: "Seller profile not found" });
     }
-    const sellerId = sellerRows[0].id;
+    const { id: sellerId, is_verified } = sellerRows[0];
+
+    // BLOCK if seller is not verified
+    if (!is_verified) {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Bulk Upload Blocked: This seller is not verified. Please approve the seller first." 
+      });
+    }
 
     // 2. Parse CSV
     const rows = [];
@@ -1525,6 +1546,14 @@ export const bulkUploadProducts = async (req, res) => {
            (product_id, seller_id, price_min, price_max, moq, stock_qty, stock, width, delivery_hours) 
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [productId, sellerId, parseFloat(MinPrice) || 0, parseFloat(MaxPrice) || 0, parseInt(MOQ) || 100, parseInt(Stock) || 0, (parseInt(Stock) > 0 ? 'Available' : 'Out of Stock'), Width || null, parseInt(DeliveryHours) || 24]
+        );
+
+        // Keep product_stocks in sync
+        await connection.query(
+          `INSERT INTO product_stocks (product_id, quantity, min_order) 
+           VALUES (?, ?, ?) 
+           ON DUPLICATE KEY UPDATE quantity = VALUES(quantity), min_order = VALUES(min_order)`,
+          [productId, parseInt(Stock) || 0, parseInt(MOQ) || 100]
         );
 
         successCount++;

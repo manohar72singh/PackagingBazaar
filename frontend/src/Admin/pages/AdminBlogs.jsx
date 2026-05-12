@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { fetchAllBlogsAdmin, deleteBlog, toggleBlogStatus } from "../../services/blogServices";
+import { getImageUrl } from "../../services/api";
 import { 
   PlusCircle, Pencil, Trash2, Eye, EyeOff, Loader2, BookOpen, 
   Search, Filter, ChevronLeft, ChevronRight, Hash, Calendar
@@ -195,7 +196,7 @@ export default function AdminBlogs() {
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 rounded-xl bg-gray-100 overflow-hidden shrink-0 border border-black/[0.05]">
                              <img 
-                               src={blog.cover_image ? (blog.cover_image.startsWith('http') ? blog.cover_image : `http://localhost:5000/${blog.cover_image}`) : "https://via.placeholder.com/100"} 
+                               src={getImageUrl(blog.cover_image)} 
                                className="w-full h-full object-cover"
                                alt=""
                                onError={(e) => e.target.src = "https://via.placeholder.com/100"}

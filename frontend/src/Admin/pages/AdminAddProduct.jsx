@@ -349,7 +349,12 @@ export default function AdminAddProduct() {
                   />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar p-1">
-                  {allVerifiedSellers.filter(s => !search || s.company_name.toLowerCase().includes(search.toLowerCase()) || s.city?.toLowerCase().includes(search.toLowerCase())).map(seller => (
+                  {allVerifiedSellers
+          .filter(s => 
+            s.company_name?.toLowerCase().includes(search.toLowerCase()) || 
+            s.owner_name?.toLowerCase().includes(search.toLowerCase()) ||
+            s.seller_uid?.toLowerCase().includes(search.toLowerCase())
+          ).map(seller => (
                     <button
                       key={seller.user_id}
                       onClick={() => setSelectedSeller(seller)}
