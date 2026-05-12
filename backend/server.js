@@ -14,6 +14,7 @@ import orderRoutes from "./routes/orderRoutes.js";
 import inquiryRoutes from './routes/inquiryRoutes.js';
 import contactRoutes from './routes/contactRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import blogRoutes from './routes/blogRoutes.js';
 
 import { createServer } from 'http';
 import { initSocket } from './socket.js';
@@ -28,7 +29,7 @@ const httpServer = createServer(app);
 initSocket(httpServer);
 
 // Ensure upload directories exist
-const folders = ['uploads/gst_certificates', 'uploads/product_images', 'uploads/others'];
+const folders = ['uploads/gst_certificates', 'uploads/product_images', 'uploads/others', 'uploads/blog_images'];
 folders.forEach(folder => {
   const dir = path.join(__dirname, folder);
   if (!fs.existsSync(dir)) {
@@ -63,6 +64,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/inquiries', inquiryRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/blogs', blogRoutes);
 
 
 

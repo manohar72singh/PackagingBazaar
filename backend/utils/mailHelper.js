@@ -6,13 +6,16 @@ dotenv.config();
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || "smtp.gmail.com",
   port: parseInt(process.env.EMAIL_PORT) || 465,
-  secure: process.env.EMAIL_SECURE === "true", // true for 465, false for other ports like 587
+  secure: process.env.EMAIL_SECURE === "true" || (parseInt(process.env.EMAIL_PORT || 465) === 465), 
+  pool: true, // Connection reuse karne ke liye
+  maxConnections: 5,
+  maxMessages: 100,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
   tls: {
-    rejectUnauthorized: false // GoDaddy servers ke liye zaroori ho sakta hai
+    rejectUnauthorized: false
   }
 });
 

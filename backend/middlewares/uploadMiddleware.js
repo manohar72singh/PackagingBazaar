@@ -16,6 +16,8 @@ const storage = multer.diskStorage({
       folder = 'product_images';
     } else if (file.fieldname === 'csvFile') {
       folder = 'csv_uploads';
+    } else if (file.fieldname === 'cover_image') {
+      folder = 'blog_images';
     }
     
     const dir = path.resolve(process.cwd(), 'uploads', folder);

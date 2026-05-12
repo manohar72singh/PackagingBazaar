@@ -6,12 +6,16 @@ export default function PolicyPage() {
 
   useEffect(() => {
     if (hash) {
-      const element = document.getElementById(hash.substring(1));
-      if (element) {
-        setTimeout(() => {
-          element.scrollIntoView({ behavior: "smooth" });
-        }, 100);
-      }
+      // Small delay to ensure DOM is fully rendered
+      setTimeout(() => {
+        const element = document.getElementById(hash.substring(1));
+        if (element) {
+          // Get the sticky header height (approx 80px) and add extra padding
+          const offset = 100;
+          const top = element.getBoundingClientRect().top + window.scrollY - offset;
+          window.scrollTo({ top, behavior: "smooth" });
+        }
+      }, 150);
     } else {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }

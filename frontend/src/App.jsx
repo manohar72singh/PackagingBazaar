@@ -26,6 +26,8 @@ import LoginPage from "./pages/LoginPage";
 import UserProfile from "./pages/UserProfile";
 import HotDealsPage from "./pages/HotDealsPage";
 import SellerPage from "./pages/SellerPage";
+import BlogPage from "./pages/BlogPage";
+import BlogDetailPage from "./pages/BlogDetailPage";
 
 // Admin
 import AdminDashboard from "./Admin/pages/AdminDashboard";
@@ -44,6 +46,8 @@ import AdminContacts from "./Admin/pages/AdminContacts";
 import AdminReviews from "./Admin/pages/AdminReviews";
 import AdminBroadcast from "./Admin/pages/AdminBroadcast";
 import AdminNotifications from "./Admin/pages/AdminNotifications";
+import AdminBlogs from "./Admin/pages/AdminBlogs";
+import AdminAddEditBlog from "./Admin/pages/AdminAddEditBlog";
 
 // Seller
 import { SellerDashboard, SellerProducts, SellerOrders, SellerLeads, SellerProfile } from "./Seller/SellerDashboard";
@@ -77,6 +81,8 @@ export default function App() {
                   <Route path="/hot-deals" element={<HotDealsPage />} />
                   <Route path="/seller" element={<SellerPage />} />
                   <Route path="/become-a-seller" element={<BecomeaSeller />} />
+                  <Route path="/blog" element={<BlogPage />} />
+                  <Route path="/blog/:slug" element={<BlogDetailPage />} />
                 </Route>
               </Route>
 
@@ -109,6 +115,9 @@ export default function App() {
                   <Route path="/admin/add-seller" element={<AdminAddSeller />} />
                   <Route path="/admin/sellers/edit/:id" element={<AdminEditSeller />} />
                   <Route path="/admin/products/edit/:id" element={<AdminEditProduct />} />
+                  <Route path="/admin/blogs" element={<AdminBlogs />} />
+                  <Route path="/admin/blogs/add" element={<AdminAddEditBlog />} />
+                  <Route path="/admin/blogs/edit/:id" element={<AdminAddEditBlog />} />
                 </Route>
               </Route>
 

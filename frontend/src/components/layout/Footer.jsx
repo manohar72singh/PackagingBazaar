@@ -1,7 +1,25 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Package, Mail, Phone, MapPin } from "lucide-react";
+import { fetchCategories } from "../../services/productServices";
 
 export default function Footer() {
+  const [categories, setCategories] = useState([]);
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await fetchCategories();
+        if (res.success) {
+          setCategories(res.data);
+        }
+      } catch (err) {
+        console.error("Footer categories load error:", err);
+      }
+    };
+    loadCategories();
+  }, []);
+
   return (
     <footer className="bg-ink text-white/60">
       <div className="max-w-7xl mx-auto px-4 py-10 sm:py-16">
@@ -36,22 +54,29 @@ export default function Footer() {
               Products
             </h4>
             <ul className="space-y-3 text-sm">
-              {[
-                "BOPP Films",
-                "PET Films",
-                "CPP Films",
-                "Laminates",
-                "Specialty Films",
-              ].map((i) => (
-                <li key={i}>
+              {categories.length > 0 ? (
+                categories.map((cat) => (
+                  <li key={cat.id}>
+                    <Link
+                      to={`/products?category=${encodeURIComponent(cat.name)}`}
+                      onClick={() => window.scrollTo(0, 0)}
+                      className="hover:text-accent transition-colors block py-0.5"
+                    >
+                      {cat.name} Films
+                    </Link>
+                  </li>
+                ))
+              ) : (
+                <li>
                   <Link
                     to="/products"
+                    onClick={() => window.scrollTo(0, 0)}
                     className="hover:text-accent transition-colors block py-0.5"
                   >
-                    {i}
+                    All Products
                   </Link>
                 </li>
-              ))}
+              )}
             </ul>
           </div>
           <div className="mt-4 sm:mt-0">
@@ -63,10 +88,10 @@ export default function Footer() {
                 ["About Us", "/about"],
                 ["Contact Us", "/contact"],
                 ["Become a Seller", "/become-a-seller"],
-                ["Blog", "#"],
+                ["Blog", "/blog"],
               ].map(([l, h]) => (
                 <li key={l}>
-                  <Link to={h} className="hover:text-accent transition-colors block py-0.5">
+                  <Link to={h} onClick={() => window.scrollTo(0, 0)} className="hover:text-accent transition-colors block py-0.5">
                     {l}
                   </Link>
                 </li>

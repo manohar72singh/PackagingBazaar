@@ -106,15 +106,16 @@ export default function ProductsPage() {
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       const params = new URLSearchParams(location.search);
-      if (searchInput) {
-        params.set("search", searchInput);
-      } else {
-        params.delete("search");
-      }
-      params.set("page", "1");
+      const currentSearchInUrl = params.get("search") || "";
       
-      // Only navigate if the search param actually changed to avoid unnecessary re-renders
-      if (params.toString() !== location.search.substring(1)) {
+      // Only navigate and reset page if the search input actually changed compared to URL
+      if (searchInput !== currentSearchInUrl) {
+        if (searchInput) {
+          params.set("search", searchInput);
+        } else {
+          params.delete("search");
+        }
+        params.set("page", "1");
         navigate({ search: params.toString() }, { replace: true });
       }
     }, 500);

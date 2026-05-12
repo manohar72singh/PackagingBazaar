@@ -290,36 +290,47 @@ export const getAllProducts = async (req, res) => {
     // Pagination
     dataQuery += ` LIMIT ? OFFSET ?`;
 
-    // Count Query
+    // Count Query - Accurate way to count grouped results
     const countQuery = `
-      SELECT COUNT(DISTINCT p.id) as total 
-      FROM products p
-      LEFT JOIN tags t ON p.tag_id = t.id
-      LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
-      LEFT JOIN categories c ON sc.category_id = c.id
-      LEFT JOIN seller_products sp ON p.id = sp.product_id AND sp.status = 'active'
-      LEFT JOIN product_stocks ps ON p.id = ps.product_id
-      LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
-      ${whereClause}
+      SELECT COUNT(*) as total FROM (
+        SELECT 1
+        FROM products p
+        LEFT JOIN tags t ON p.tag_id = t.id
+        LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
+        LEFT JOIN categories c ON sc.category_id = c.id
+        LEFT JOIN seller_products sp ON p.id = sp.product_id AND sp.status = 'active'
+        LEFT JOIN product_stocks ps ON p.id = ps.product_id
+        LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
+        ${whereClause}
+        GROUP BY COALESCE(p.group_key, CAST(p.id AS CHAR))
+      ) as grouped_results
     `;
 
-    // Execute queries
-    const [rows] = await pool.query(dataQuery, [
-      ...queryParams,
-      parseInt(limit),
-      parseInt(offset),
-    ]);
-    const [countRows] = await pool.query(countQuery, queryParams);
+    // Increase GROUP_CONCAT limit for Base64 images
+    const connection = await pool.getConnection();
+    try {
+      await connection.query("SET SESSION group_concat_max_len = 1000000");
 
-    const totalProducts = countRows[0].total;
+      // Execute queries
+      const [rows] = await connection.query(dataQuery, [
+        ...queryParams,
+        parseInt(limit),
+        parseInt(offset),
+      ]);
+      const [countRows] = await connection.query(countQuery, queryParams);
 
-    res.status(200).json({
-      success: true,
-      totalProducts,
-      totalPages: Math.ceil(totalProducts / limit),
-      currentPage: parseInt(page),
-      data: rows,
-    });
+      const totalProducts = countRows[0].total;
+
+      res.status(200).json({
+        success: true,
+        totalProducts,
+        totalPages: Math.ceil(totalProducts / limit),
+        currentPage: parseInt(page),
+        data: rows,
+      });
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     console.error("Error in getAllProducts:", error);
     res.status(500).json({ success: false, message: "Server Error" });
@@ -481,32 +492,40 @@ export const getProductById = async (req, res) => {
 // Get Top Selling Products (Sorted by Review Count)
 export const getTopSellingProducts = async (req, res) => {
   try {
-    const query = `
-      SELECT MAX(p.id) as id, MAX(p.name) as name, MAX(p.description) as description, MAX(p.image_url) as image_url, MAX(p.unit) as unit,
-             MAX(t.tag_name) as tag_name, MAX(c.name) as category_name, 
-             SUBSTRING_INDEX(GROUP_CONCAT(s.seller_uid ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_uid, 
-             SUBSTRING_INDEX(GROUP_CONCAT(s.company_name ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_name, 
-             SUBSTRING_INDEX(GROUP_CONCAT(s.id ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_id,
-             COALESCE(MIN(sp.price_min), MIN(p.min_price), 0) as min_price,
-             COALESCE(MAX(sp.price_max), MAX(p.max_price), 0) as max_price,
-             COALESCE(SUM(sp.stock_qty), MAX(ps.quantity), 0) as stock, 
-             COALESCE(MIN(sp.moq), MIN(ps.min_order), 100) as min_order,
-             (SELECT AVG(rating) FROM product_reviews WHERE product_id = MAX(p.id) AND status = 'approved') as avg_rating,
-             (SELECT COUNT(*) FROM product_reviews WHERE product_id = MAX(p.id) AND status = 'approved') as review_count,
-             COUNT(DISTINCT s.id) as seller_count
-      FROM products p
-      LEFT JOIN tags t ON p.tag_id = t.id
-      LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
-      LEFT JOIN categories c ON sc.category_id = c.id
-      LEFT JOIN seller_products sp ON p.id = sp.product_id AND sp.status = 'active'
-      LEFT JOIN product_stocks ps ON p.id = ps.product_id
-      LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
-      GROUP BY p.id
-      ORDER BY review_count DESC
-      LIMIT 8
-    `;
-    const [rows] = await pool.query(query);
-    res.status(200).json({ success: true, data: rows });
+    // Increase GROUP_CONCAT limit for Base64 images
+    const connection = await pool.getConnection();
+    try {
+      await connection.query("SET SESSION group_concat_max_len = 1000000");
+
+      const query = `
+        SELECT MAX(p.id) as id, MAX(p.name) as name, MAX(p.description) as description, MAX(p.image_url) as image_url, MAX(p.unit) as unit,
+               MAX(t.tag_name) as tag_name, MAX(c.name) as category_name, 
+               SUBSTRING_INDEX(GROUP_CONCAT(s.seller_uid ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_uid, 
+               SUBSTRING_INDEX(GROUP_CONCAT(s.company_name ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_name, 
+               SUBSTRING_INDEX(GROUP_CONCAT(s.id ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_id,
+               COALESCE(MIN(sp.price_min), MIN(p.min_price), 0) as min_price,
+               COALESCE(MAX(sp.price_max), MAX(p.max_price), 0) as max_price,
+               COALESCE(SUM(sp.stock_qty), MAX(ps.quantity), 0) as stock, 
+               COALESCE(MIN(sp.moq), MIN(ps.min_order), 100) as min_order,
+               (SELECT AVG(rating) FROM product_reviews WHERE product_id = MAX(p.id) AND status = 'approved') as avg_rating,
+               (SELECT COUNT(*) FROM product_reviews WHERE product_id = MAX(p.id) AND status = 'approved') as review_count,
+               COUNT(DISTINCT s.id) as seller_count
+        FROM products p
+        LEFT JOIN tags t ON p.tag_id = t.id
+        LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
+        LEFT JOIN categories c ON sc.category_id = c.id
+        LEFT JOIN seller_products sp ON p.id = sp.product_id AND sp.status = 'active'
+        LEFT JOIN product_stocks ps ON p.id = ps.product_id
+        LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
+        GROUP BY p.id
+        ORDER BY review_count DESC
+        LIMIT 8
+      `;
+      const [rows] = await connection.query(query);
+      res.status(200).json({ success: true, data: rows });
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     console.error("Error in getTopSellingProducts:", error);
     res.status(500).json({ success: false, message: "Server Error" });
@@ -516,42 +535,50 @@ export const getTopSellingProducts = async (req, res) => {
 // NEW: Unique Top Selling — same product from multiple sellers shows only once
 export const getUniqueTopSelling = async (req, res) => {
   try {
-    const query = `
-      SELECT
-        p.name,
-        -- Pick ALL fields from the same product (lowest id) to avoid mismatch
-        SUBSTRING_INDEX(GROUP_CONCAT(p.id ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as id,
-        SUBSTRING_INDEX(GROUP_CONCAT(p.image_url ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as image_url,
-        SUBSTRING_INDEX(GROUP_CONCAT(p.description ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as description,
-        SUBSTRING_INDEX(GROUP_CONCAT(p.unit ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as unit,
-        SUBSTRING_INDEX(GROUP_CONCAT(t.tag_name ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as tag_name,
-        MAX(c.name) as category_name,
-        SUBSTRING_INDEX(GROUP_CONCAT(s.seller_uid ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_uid,
-        SUBSTRING_INDEX(GROUP_CONCAT(s.id ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_id,
-        COALESCE(MIN(sp.price_min), MIN(p.min_price), 0) as min_price,
-        COALESCE(MAX(sp.price_max), MAX(p.max_price), 0) as max_price,
-        COALESCE(SUM(sp.stock_qty), MAX(ps.quantity), 0) as stock,
-        COALESCE(MIN(sp.moq), MIN(ps.min_order), 100) as min_order,
-        (SELECT AVG(pr.rating) FROM product_reviews pr
-          INNER JOIN products pp ON pr.product_id = pp.id
-          WHERE pp.name = p.name AND pr.status = 'approved') as avg_rating,
-        (SELECT COUNT(*) FROM product_reviews pr
-          INNER JOIN products pp ON pr.product_id = pp.id
-          WHERE pp.name = p.name AND pr.status = 'approved') as review_count,
-        COUNT(DISTINCT s.id) as seller_count
-      FROM products p
-      LEFT JOIN tags t ON p.tag_id = t.id
-      LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
-      LEFT JOIN categories c ON sc.category_id = c.id
-      LEFT JOIN seller_products sp ON p.id = sp.product_id AND sp.status = 'active'
-      LEFT JOIN product_stocks ps ON p.id = ps.product_id
-      LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
-      GROUP BY p.name
-      ORDER BY review_count DESC, seller_count DESC
-      LIMIT 8
-    `;
-    const [rows] = await pool.query(query);
-    res.status(200).json({ success: true, data: rows });
+    // Increase GROUP_CONCAT limit for Base64 images
+    const connection = await pool.getConnection();
+    try {
+      await connection.query("SET SESSION group_concat_max_len = 1000000");
+
+      const query = `
+        SELECT
+          p.name,
+          -- Pick ALL fields from the same product (lowest id) to avoid mismatch
+          SUBSTRING_INDEX(GROUP_CONCAT(p.id ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as id,
+          SUBSTRING_INDEX(GROUP_CONCAT(p.image_url ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as image_url,
+          SUBSTRING_INDEX(GROUP_CONCAT(p.description ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as description,
+          SUBSTRING_INDEX(GROUP_CONCAT(p.unit ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as unit,
+          SUBSTRING_INDEX(GROUP_CONCAT(t.tag_name ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as tag_name,
+          MAX(c.name) as category_name,
+          SUBSTRING_INDEX(GROUP_CONCAT(s.seller_uid ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_uid,
+          SUBSTRING_INDEX(GROUP_CONCAT(s.id ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_id,
+          COALESCE(MIN(sp.price_min), MIN(p.min_price), 0) as min_price,
+          COALESCE(MAX(sp.price_max), MAX(p.max_price), 0) as max_price,
+          COALESCE(SUM(sp.stock_qty), MAX(ps.quantity), 0) as stock,
+          COALESCE(MIN(sp.moq), MIN(ps.min_order), 100) as min_order,
+          (SELECT AVG(pr.rating) FROM product_reviews pr
+            INNER JOIN products pp ON pr.product_id = pp.id
+            WHERE pp.name = p.name AND pr.status = 'approved') as avg_rating,
+          (SELECT COUNT(*) FROM product_reviews pr
+            INNER JOIN products pp ON pr.product_id = pp.id
+            WHERE pp.name = p.name AND pr.status = 'approved') as review_count,
+          COUNT(DISTINCT s.id) as seller_count
+        FROM products p
+        LEFT JOIN tags t ON p.tag_id = t.id
+        LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
+        LEFT JOIN categories c ON sc.category_id = c.id
+        LEFT JOIN seller_products sp ON p.id = sp.product_id AND sp.status = 'active'
+        LEFT JOIN product_stocks ps ON p.id = ps.product_id
+        LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
+        GROUP BY p.name
+        ORDER BY review_count DESC, seller_count DESC
+        LIMIT 8
+      `;
+      const [rows] = await connection.query(query);
+      res.status(200).json({ success: true, data: rows });
+    } finally {
+      connection.release();
+    }
   } catch (error) {
     console.error("Error in getUniqueTopSelling:", error);
     res.status(500).json({ success: false, message: "Server Error" });

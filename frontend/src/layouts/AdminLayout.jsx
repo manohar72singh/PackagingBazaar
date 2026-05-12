@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { 
   Store, Menu, X, Package, LogOut, ShieldCheck, 
   ChevronDown, Users, LayoutDashboard, ClipboardList, 
-  CheckCircle, ShoppingBag, MessageSquare, Plus, Mail, Star, Megaphone
+  CheckCircle, ShoppingBag, MessageSquare, Plus, Mail, Star, Megaphone, BookOpen
 } from "lucide-react";
 import { Toaster } from 'react-hot-toast';
 import { AnimatePresence, motion } from "framer-motion";
@@ -50,6 +50,7 @@ export default function AdminLayout() {
         { to: "/admin/reviews", icon: <Star size={18} />, label: "Product Reviews" },
         { to: "/admin/contacts", icon: <Mail size={18} />, label: "Contact Messages" },
         { to: "/admin/broadcast", icon: <Megaphone size={18} />, label: "Broadcast Alerts" },
+        { to: "/admin/blogs", icon: <BookOpen size={18} />, label: "Blog Manager" },
       ]
     },
     {
