@@ -57,7 +57,6 @@ export const getCoordinates = async (pincode, syncWithApi = false) => {
 
         // 1. Try Google Maps Geocoding (Best Accuracy)
         if (GOOGLE_KEY) {
-            console.log(`🌐 Syncing coordinates for ${cleanPincode} from Google Maps API...`);
             try {
                 const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${cleanPincode},+India&key=${GOOGLE_KEY}`;
                 const response = await fetch(url);
@@ -77,33 +76,38 @@ export const getCoordinates = async (pincode, syncWithApi = false) => {
                         city: cityComp ? cityComp.long_name : '',
                         state: stateComp ? stateComp.long_name : ''
                     };
+                } else if (data.status === 'OVER_QUERY_LIMIT' || data.status === 'REQUEST_DENIED' || data.status === 'BILLING_NOT_ENABLED') {
+                    console.error(`⚠️ Google Geocoding API Error: ${data.status} - ${data.error_message || ''}`);
                 }
             } catch (e) {
-                console.error("Google Geocoding failed, trying OpenStreetMap...", e.message);
+                console.error("Google Geocoding network failed, trying OpenStreetMap...", e.message);
             }
         }
 
         // 2. Fallback to OpenStreetMap Nominatim API if Google failed or not provided
         if (!apiResult) {
-            console.log(`🌐 Syncing coordinates for pincode ${cleanPincode} from OpenStreetMap API...`);
-            const url = `https://nominatim.openstreetmap.org/search?q=${cleanPincode}+India&format=json&limit=1`;
-            
-            const response = await fetch(url, {
-                headers: {
-                    'User-Agent': `PackagingBazaar-App/1.1 (contact: ${process.env.EMAIL_USER || 'admin@packagingbazaar.co.in'})`
-                }
-            });
+            try {
+                const url = `https://nominatim.openstreetmap.org/search?q=${cleanPincode}+India&format=json&limit=1`;
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'User-Agent': `PackagingBazaar-App/1.1 (contact: ${process.env.EMAIL_USER || 'admin@packagingbazaar.co.in'})`
+                    }
+                });
 
-            if (response.ok) {
-                const data = await response.json();
-                if (data && data.length > 0) {
-                    apiResult = {
-                        latitude: parseFloat(data[0].lat),
-                        longitude: parseFloat(data[0].lon),
-                        city: data[0].display_name.split(',')[0],
-                        state: data[0].display_name.split(',').slice(-3, -2)[0]?.trim() || ''
-                    };
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.length > 0) {
+                        apiResult = {
+                            latitude: parseFloat(data[0].lat),
+                            longitude: parseFloat(data[0].lon),
+                            city: data[0].display_name.split(',')[0],
+                            state: data[0].display_name.split(',').slice(-3, -2)[0]?.trim() || ''
+                        };
+                    }
                 }
+            } catch (e) {
+                console.error("OpenStreetMap API failed:", e.message);
             }
         }
 
@@ -125,22 +129,34 @@ export const getCoordinates = async (pincode, syncWithApi = false) => {
 
         // Final Fallback: If API has no results, use DB if available
         if (dbResult) {
-            console.log(`⚠️ API returned no results for ${cleanPincode}, using cached DB coordinates.`);
             return dbResult;
         }
 
-        console.log(`❌ No coordinates found for pincode ${cleanPincode} in API or DB.`);
         return null;
     } catch (error) {
-        console.error(`❌ Error in getCoordinates for ${cleanPincode}:`, error.message);
-        if (dbResult) return dbResult;
+        console.error(`❌ Global Error in getCoordinates for ${pincode}:`, error.message);
         return null;
     }
 };
 
 /**
+ * Helper to fetch with a specific timeout
+ */
+const fetchWithTimeout = async (url, options = {}, timeout = 10000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(id);
+        return response;
+    } catch (e) {
+        clearTimeout(id);
+        throw e;
+    }
+};
+
+/**
  * Get road distance and travel time between two points.
- * Tries Google Maps first, then Mapbox, and finally falls back to OSRM (Free).
  */
 export const getRoadMetrics = async (lat1, lon1, lat2, lon2) => {
     if (!lat1 || !lon1 || !lat2 || !lon2) return null;
@@ -148,69 +164,63 @@ export const getRoadMetrics = async (lat1, lon1, lat2, lon2) => {
     const GOOGLE_KEY = process.env.GOOGLE_MAPS_API_KEY;
     const MAPBOX_KEY = process.env.MAPBOX_TOKEN;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s Timeout
+    // 1. Try Google Maps (Best Accuracy & Traffic)
+    if (GOOGLE_KEY) {
+        try {
+            const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${lat1},${lon1}&destinations=${lat2},${lon2}&key=${GOOGLE_KEY}`;
+            const response = await fetchWithTimeout(url, {}, 10000); // 10s timeout
+            const data = await response.json();
+            
+            if (data.status === 'OK' && data.rows[0].elements[0].status === 'OK') {
+                const element = data.rows[0].elements[0];
+                return {
+                    road_distance_km: (element.distance.value / 1000).toFixed(1),
+                    duration_min: Math.round(element.duration.value / 60)
+                };
+            } else {
+                // If billing is disabled, it will return REQUEST_DENIED or similar
+                if (data.status !== 'OK') {
+                    console.log(`⚠️ Google Maps API returned error: ${data.status} ${data.error_message || ''}`);
+                }
+            }
+        } catch (e) { 
+            console.log(`⚠️ Google Maps API Failed: ${e.message}`, e.cause ? `(Cause: ${e.cause.message || e.cause})` : ""); 
+        }
+    }
 
+    // 2. Try Mapbox
+    if (MAPBOX_KEY) {
+        try {
+            const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${lon1},${lat1};${lon2},${lat2}?access_token=${MAPBOX_KEY}&overview=false`;
+            const response = await fetchWithTimeout(url, {}, 10000);
+            const data = await response.json();
+            if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+                return {
+                    road_distance_km: (data.routes[0].distance / 1000).toFixed(1),
+                    duration_min: Math.round((data.routes[0].duration / 60) * 1.3)
+                };
+            }
+        } catch (e) { 
+            console.log(`⚠️ Mapbox API Failed: ${e.message}`); 
+        }
+    }
+
+    // 3. Fallback to OSRM (Free)
     try {
-        // 1. Try Google Maps (Best Accuracy & Traffic)
-        if (GOOGLE_KEY) {
-            try {
-                const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${lat1},${lon1}&destinations=${lat2},${lon2}&key=${GOOGLE_KEY}`;
-                const response = await fetch(url, { signal: controller.signal });
-                const data = await response.json();
-                if (data.status === 'OK' && data.rows[0].elements[0].status === 'OK') {
-                    const element = data.rows[0].elements[0];
-                    clearTimeout(timeoutId);
-                    return {
-                        road_distance_km: (element.distance.value / 1000).toFixed(1),
-                        duration_min: Math.round(element.duration.value / 60)
-                    };
-                }
-            } catch (e) { console.log("Google Maps API failed, trying others..."); }
-        }
-
-        // 2. Try Mapbox (Great Accuracy, No Traffic)
-        if (MAPBOX_KEY) {
-            try {
-                const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${lon1},${lat1};${lon2},${lat2}?access_token=${MAPBOX_KEY}&overview=false`;
-                const response = await fetch(url, { signal: controller.signal });
-                const data = await response.json();
-                if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-                    clearTimeout(timeoutId);
-                    return {
-                        road_distance_km: (data.routes[0].distance / 1000).toFixed(1),
-                        duration_min: Math.round((data.routes[0].duration / 60) * 1.3)
-                    };
-                }
-            } catch (e) { console.log("Mapbox API failed, trying OSRM..."); }
-        }
-
-        // 3. Fallback to OSRM (Free, Base Estimates)
         const url = `https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`;
-        const response = await fetch(url, { signal: controller.signal });
+        const response = await fetchWithTimeout(url, {}, 15000); // 15s timeout for OSRM
         const data = await response.json();
-        clearTimeout(timeoutId);
 
         if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
             const baseDurationMin = data.routes[0].duration / 60;
             return {
                 road_distance_km: (data.routes[0].distance / 1000).toFixed(1),
-                duration_min: Math.round(baseDurationMin * 1.4) // 40% Traffic Factor
+                duration_min: Math.round(baseDurationMin * 1.4)
             };
         }
-
-        return null;
-    } catch (error) {
-        clearTimeout(timeoutId);
-        if (error.name === 'AbortError') {
-            console.error("❌ Routing API Timeout (8s)");
-        } else {
-            console.error("❌ Routing API Error:", error.message);
-        }
-        return null;
+    } catch (e) {
+        console.log(`⚠️ OSRM API Failed: ${e.message}`, e.cause ? `(Cause: ${e.cause.message || e.cause})` : "");
     }
+
+    return null;
 };
-
-
-
-

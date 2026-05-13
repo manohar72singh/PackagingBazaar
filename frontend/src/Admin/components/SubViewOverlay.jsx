@@ -11,7 +11,8 @@ import {
   MessageCircle,
   ArrowUpDown,
   IndianRupee,
-  Navigation
+  Navigation,
+  AlertTriangle
 } from "lucide-react";
 import { 
   fetchSellerOrdersAdmin, 
@@ -119,19 +120,51 @@ export default function SubViewOverlay({ entity, onClose }) {
     if (sortBy === "price") return (a.best_price || 999999) - (b.best_price || 999999);
     if (sortBy === "distance") return (a.distance_km || 999999) - (b.distance_km || 999999);
     if (sortBy === "dispatch") return (a.best_delivery_hours || 999999) - (b.best_delivery_hours || 999999);
+    if (sortBy === "moq") return (a.best_moq || 999999) - (b.best_moq || 999999);
     
-    // Default (Best Match): Prioritize Distance as requested by User
-    // We still use score as a tie-breaker if distance is exactly same
+    // Default (Best Match): Weighted Score Priority
     const distA = (a.distance_km !== undefined && a.distance_km !== null) ? parseFloat(a.distance_km) : 999999;
     const distB = (b.distance_km !== undefined && b.distance_km !== null) ? parseFloat(b.distance_km) : 999999;
     
-    if (distA !== distB) return distA - distB;
-    
-    // If distance is same, use total score as tie-breaker
-    const scoreA = (a.location_score || 0) + (a.product_score || 0);
-    const scoreB = (b.location_score || 0) + (b.product_score || 0);
-    return scoreB - scoreA;
+    // We prioritize sellers with coordinates
+    if ((distA === 999999) !== (distB === 999999)) return distA - distB;
+
+    // Tie-break by score
+    return (b.total_score || 0) - (a.total_score || 0);
   });
+
+  const handleExportAnalysis = () => {
+    if (sortedItems.length === 0) return notifyError("No data to export");
+    
+    // Create CSV Header
+    const headers = [
+      "Seller Name", "City", "State", "Distance (KM)", 
+      "Total Score", "Location Score", "Product Score", 
+      "Price Match", "MOQ Fit", "Stock Fit", 
+      "Price", "MOQ", "Delivery Hours", "Tag"
+    ];
+    
+    // Map data to rows
+    const rows = sortedItems.map(s => [
+      s.company_name, s.city, s.state, s.distance_km || 'N/A',
+      s.total_score || 0, s.location_score || 0, s.product_score || 0,
+      s.price_match ? "Yes" : "No", s.moq_fit ? "Yes" : "No", s.has_stock ? "Yes" : "No",
+      s.best_price, s.best_moq, s.best_delivery_hours, s.match_tag || 'N/A'
+    ]);
+    
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(r => r.join(","))
+    ].join("\n");
+    
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Recommendation_Audit_LID_${entity.id}.csv`);
+    link.click();
+    notifySuccess("Analysis report downloaded!");
+  };
 
   return (
     <div className="fixed inset-0 z-[100] bg-gray-900/60 backdrop-blur-md flex items-center justify-center p-4">
@@ -149,19 +182,30 @@ export default function SubViewOverlay({ entity, onClose }) {
           
           <div className="flex items-center gap-4">
              {entity.mode === "lead-matching" && (
-                <div className="flex items-center gap-2 bg-white border border-gray-100 p-1 rounded-xl shadow-sm">
-                  <div className="pl-3 pr-1 text-gray-400"><ArrowUpDown size={14} /></div>
-                  <select 
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    className="bg-transparent border-none text-[10px] font-black uppercase text-gray-600 outline-none py-1.5 pr-4 cursor-pointer"
+                <>
+                  <button 
+                    onClick={handleExportAnalysis}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-100 rounded-xl text-[10px] font-black uppercase text-gray-600 hover:bg-gray-50 transition-all shadow-sm"
                   >
-                    <option value="match">Best Match</option>
-                    <option value="dispatch">Fastest Dispatch</option>
-                    <option value="price">Lowest Price</option>
-                    <option value="distance">Nearest</option>
-                  </select>
-                </div>
+                    <IndianRupee size={14} className="text-green-600" />
+                    Export Analysis
+                  </button>
+
+                  <div className="flex items-center gap-2 bg-white border border-gray-100 p-1 rounded-xl shadow-sm">
+                    <div className="pl-3 pr-1 text-gray-400"><ArrowUpDown size={14} /></div>
+                    <select 
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="bg-transparent border-none text-[10px] font-black uppercase text-gray-600 outline-none py-1.5 pr-4 cursor-pointer"
+                    >
+                      <option value="match">Best Match</option>
+                      <option value="dispatch">Fastest Dispatch</option>
+                      <option value="price">Lowest Price</option>
+                      <option value="moq">Lowest MOQ</option>
+                      <option value="distance">Nearest</option>
+                    </select>
+                  </div>
+                </>
              )}
             <button onClick={onClose} className="p-3 bg-white border rounded-2xl hover:bg-gray-100 transition-all">
               <XCircle />
@@ -204,22 +248,46 @@ export default function SubViewOverlay({ entity, onClose }) {
                 ))}
 
               {entity.mode === "lead-matching" && sortedItems.map((seller, idx) => {
-                  const totalScore = (seller.location_score || 0) + (seller.product_score || 0);
-                  const isBest = sortBy === "match" && idx === 0;
+                  const matchInfo = typeof seller.hard_match_info === 'string' ? JSON.parse(seller.hard_match_info) : (seller.hard_match_info || {});
+                  const isHardMatch = !!seller.is_hard_match;
+                  const isBest = sortBy === "match" && idx === 0 && isHardMatch;
                   
                   return (
-                    <div key={`seller-${seller.id}`} className={`p-8 rounded-[2.5rem] border transition-all shadow-sm ${isBest ? "bg-orange-50/50 border-accent/30 shadow-orange-100" : "bg-white border-gray-100"}`}>
+                    <div key={`seller-${seller.id}`} className={`p-8 rounded-[2.5rem] border transition-all shadow-sm ${!isHardMatch ? "opacity-60 bg-gray-50/50 grayscale-[0.3]" : (isBest ? "bg-orange-50/50 border-accent/30 shadow-orange-100" : "bg-white border-gray-100")}`}>
                       <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
                             <h4 className="font-syne font-black text-gray-900 text-xl uppercase tracking-tighter">{seller.company_name}</h4>
                             {isBest && <span className="bg-accent text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">Recommended Match 🥇</span>}
+                            {!isHardMatch && <span className="bg-gray-400 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">Potential Match (Filtered)</span>}
                           </div>
                           <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold text-gray-400 mb-6 font-syne uppercase">
                             <span className="flex items-center gap-1"><MapPinIcon size={12} className="text-accent" /> {seller.city}, {seller.state}</span>
                             <span className="flex items-center gap-1"><IndianRupee size={12} className="text-green-600" /> Best Price: ₹{seller.best_price}</span>
+                            <span className="flex items-center gap-1"><ShoppingBag size={12} className="text-blue-500" /> MOQ: {seller.best_moq} {seller.unit || 'kg'}</span>
                             {seller.best_delivery_hours && (
                               <span className="flex items-center gap-1"><Zap size={12} className="text-amber-500" /> Dispatch: {seller.best_delivery_hours} Hrs</span>
+                            )}
+                            {!seller.moq_fit && (
+                              <span className="flex items-center gap-1.5 px-3 py-1 bg-orange-50 text-orange-600 border border-orange-100 rounded-lg animate-pulse">
+                                <AlertTriangle size={12} /> Low Capacity / MOQ
+                              </span>
+                            )}
+                            {!isHardMatch && (
+                               <div className="flex flex-wrap gap-1.5">
+                                 <span className="px-3 py-1 bg-red-50 text-red-600 border border-red-100 rounded-lg font-black text-[9px] uppercase tracking-wider">
+                                   Technical Mismatch
+                                 </span>
+                                 {(matchInfo.width_match === 0 || matchInfo.width_match === false) && (
+                                   <span className="px-2 py-1 bg-white border border-red-200 text-red-500 rounded-lg font-bold text-[8px] uppercase">Width Mismatch</span>
+                                 )}
+                                 {(matchInfo.thickness_match === 0 || matchInfo.thickness_match === false) && (
+                                   <span className="px-2 py-1 bg-white border border-red-200 text-red-500 rounded-lg font-bold text-[8px] uppercase">Thickness Mismatch</span>
+                                 )}
+                                 {(matchInfo.type_match === 0 || matchInfo.type_match === false) && (
+                                   <span className="px-2 py-1 bg-white border border-red-200 text-red-500 rounded-lg font-bold text-[8px] uppercase">Type Mismatch</span>
+                                 )}
+                               </div>
                             )}
                           </div>
 
@@ -228,7 +296,7 @@ export default function SubViewOverlay({ entity, onClose }) {
                                <p className="text-[10px] font-black text-ink uppercase tracking-widest flex items-center gap-2">
                                  Smart Match Strength 
                                  <span className="text-accent">
-                                   {Math.round((totalScore / 1000) * 100)}%
+                                   {Math.round((seller.total_score / 1500) * 100)}%
                                  </span>
                                </p>
                                {seller.distance_km !== undefined && (
@@ -248,12 +316,16 @@ export default function SubViewOverlay({ entity, onClose }) {
                                  </div>
                                )}
                              </div>
-
-                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
-                                <MatchItem label="Proximity Score" score={seller.location_score} max={400} />
-                                <MatchItem label="Inventory & Price" score={seller.product_score} max={600} />
-                                <MatchItem label="Strict Constraints" status={seller.has_stock && seller.moq_fit} score={null} />
-                                <MatchItem label="Category Relevance" status={true} score={null} />
+ 
+                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <MatchItem label="Proximity Match" status={seller.location_score > 0} score={seller.location_score} />
+                                <MatchItem label="Inventory Match" status={seller.product_score > 0} score={seller.product_score} />
+                                <MatchItem label="Product Name" status={true} score={250} />
+                                <MatchItem label="Product Type" status={matchInfo.type_match} />
+                                <MatchItem label="Price Match" status={seller.price_match} />
+                                <MatchItem label="Fast Delivery" status={seller.best_delivery_hours <= 24} />
+                                <MatchItem label="MOQ Requirement" status={seller.moq_fit} />
+                                <MatchItem label="Stock Availability" status={seller.has_stock} />
                              </div>
                           </div>
                         </div>

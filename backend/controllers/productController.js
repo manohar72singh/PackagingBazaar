@@ -757,20 +757,32 @@ export const updateProduct = async (req, res) => {
     product_code,
     thickness,
     color,
-    productType, // from frontend form
+    productType, 
     minPrice,
     maxPrice,
     width,
     unit,
     description,
     image_url,
-    deliveryTime, // from frontend form
+    img, // fallback from some frontend forms
+    deliveryTime, 
     stock,
     minOrder,
-    applications, // Array of app names or IDs
+    applications, 
     is_hot_deal,
     is_trending,
   } = req.body;
+
+  const final_image_url = image_url || img;
+
+  // Sanitize numeric fields to handle empty strings as NULL
+  const s_sub_category_id = sub_category_id === '' ? null : sub_category_id;
+  const s_product_group_id = product_group_id === '' ? null : product_group_id;
+  const s_tag_id = tag_id === '' ? null : tag_id;
+  const s_minPrice = minPrice === '' ? null : minPrice;
+  const s_maxPrice = maxPrice === '' ? null : maxPrice;
+  const s_stock = stock === '' ? null : stock;
+  const s_minOrder = minOrder === '' ? null : minOrder;
 
   const userId = req.user.id;
   const role = req.user.role;
@@ -815,7 +827,7 @@ export const updateProduct = async (req, res) => {
         width = ?, 
         unit = ?, 
         description = ?, 
-        image_url = ?, 
+        image_url = COALESCE(NULLIF(?, ''), image_url), 
         delivery_time = ?,
         is_hot_deal = ?,
         is_trending = ?
@@ -823,16 +835,16 @@ export const updateProduct = async (req, res) => {
     `;
     
     await connection.query(updateProductSql, [
-      name, display_name, sub_category_id, product_group_id, tag_id, product_code,
-      thickness, color, productType, minPrice, maxPrice, width, unit,
-      description, image_url, deliveryTime, is_hot_deal ? 1 : 0, is_trending ? 1 : 0, id
+      name, display_name, s_sub_category_id, s_product_group_id, s_tag_id, product_code,
+      thickness, color, productType, s_minPrice, s_maxPrice, width, unit,
+      description, final_image_url, deliveryTime, is_hot_deal ? 1 : 0, is_trending ? 1 : 0, id
     ]);
 
     // 3. Update product_stocks table
     if (stock !== undefined || minOrder !== undefined) {
       await connection.query(
         "UPDATE product_stocks SET quantity = COALESCE(?, quantity), min_order = COALESCE(?, min_order) WHERE product_id = ?",
-        [stock, minOrder, id]
+        [s_stock, s_minOrder, id]
       );
 
       // 3.1 Update seller_products as well
@@ -846,7 +858,7 @@ export const updateProduct = async (req, res) => {
            price_max = COALESCE(?, price_max),
            stock = CASE WHEN ? > 0 THEN 'Available' ELSE 'Out of Stock' END
            WHERE product_id = ? AND seller_id = ?`,
-          [stock, minOrder, minPrice, maxPrice, stock, id, pData[0].seller_id]
+          [s_stock, s_minOrder, s_minPrice, s_maxPrice, s_stock, id, pData[0].seller_id]
         );
       }
     }
