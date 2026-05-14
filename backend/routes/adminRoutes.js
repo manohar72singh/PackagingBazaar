@@ -8,7 +8,8 @@ import {
   getRecommendedSellers, addProductForSeller, uploadImage, updateSellerStatus,
   addSellerAdmin, updateSellerDetailsAdmin,
   createCategory, deleteCategory, createSubCategory, deleteSubCategory,
-  getInquiryAssignedSellers, exportDataAdmin, bulkUploadProducts
+  getInquiryAssignedSellers, exportDataAdmin, bulkUploadProducts,
+  getLeadAssignmentStats
 } from "../controllers/adminController.js";
 import { getAllContactMessages, updateContactStatus } from "../controllers/contactController.js";
 import { shareLeadToSeller } from "../controllers/inquiryController.js";
@@ -57,6 +58,7 @@ router.patch("/inquiries/:id", verifyToken, isAdmin, updateInquiryStatus);
 router.get("/inquiries/:id/recommendations", verifyToken, isAdmin, getRecommendedSellers);
 router.get("/inquiries/:id/assigned-sellers", verifyToken, isAdmin, getInquiryAssignedSellers);
 router.patch("/inquiries/:id/share", verifyToken, isAdmin, shareLeadToSeller);
+router.get("/assignments-stats", verifyToken, isAdmin, getLeadAssignmentStats);
 
 // --- Category & SubCategory Management ---
 router.post("/categories", verifyToken, isAdmin, createCategory);

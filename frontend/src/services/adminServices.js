@@ -263,3 +263,11 @@ export const downloadExport = async (entity) => {
   link.click();
   link.remove();
 };
+
+export const fetchLeadAssignmentStats = async (page = 1, limit = 20, status = '', sellerId = '') => {
+  let url = `/admin/assignments-stats?page=${page}&limit=${limit}`;
+  if (status) url += `&status=${status}`;
+  if (sellerId) url += `&sellerId=${sellerId}`;
+  const response = await API.get(url);
+  return response.data;
+};

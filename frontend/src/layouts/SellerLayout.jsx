@@ -211,7 +211,7 @@ const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard", href: "/seller/dashboard" },
   { id: "products", label: "My Products", icon: "products", href: "/seller/products" },
   { id: "leads", label: "Business Leads", icon: "leads", href: "/seller/leads" },
-  { id: "orders", label: "Orders", icon: "orders", href: "/seller/orders" },
+  { id: "orders", label: "Orders & History", icon: "orders", href: "/seller/orders" },
   { id: "profile", label: "Seller Profile", icon: "profile", href: "/seller/profile" },
 ];
 

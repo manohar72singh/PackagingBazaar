@@ -650,7 +650,19 @@ export const getAllInquiriesAdmin = async (req, res) => {
              COALESCE(u.email, i.buyer_email) as buyer_display_email,
              p.name as product_name, p.image_url,
              s.company_name as seller_name, s.city as seller_city, s.state as seller_state,
-             ws.company_name as won_seller_name
+             ws.company_name as won_seller_name,
+             (
+               SELECT JSON_ARRAYAGG(
+                 JSON_OBJECT(
+                   'seller_id', la.seller_id,
+                   'company_name', s2.company_name,
+                   'status', la.assignment_status
+                 )
+               )
+               FROM lead_assignments la
+               JOIN sellers s2 ON la.seller_id = s2.id
+               WHERE la.inquiry_id = i.id
+             ) as assigned_sellers
       FROM inquiries i
       LEFT JOIN users u ON i.buyer_id = u.id
       JOIN products p ON i.product_id = p.id
@@ -661,11 +673,16 @@ export const getAllInquiriesAdmin = async (req, res) => {
     `;
     const [rows] = await pool.query(query, [limit, offset]);
 
+    const inquiries = rows.map(row => ({
+      ...row,
+      assigned_sellers: typeof row.assigned_sellers === 'string' ? JSON.parse(row.assigned_sellers) : row.assigned_sellers
+    }));
+
     const [[{ total }]] = await pool.query("SELECT COUNT(*) as total FROM inquiries");
 
     res.status(200).json({ 
       success: true, 
-      inquiries: rows,
+      inquiries: inquiries,
       totalCount: total,
       totalPages: Math.ceil(total / limit),
       currentPage: page
@@ -1079,6 +1096,8 @@ export const getRecommendedSellers = async (req, res) => {
               END +
               -- Stock availability (Max 100)
               CASE WHEN sp.stock_qty >= ?         THEN 100 ELSE 0 END +
+              -- MOQ Fit / Capacity Bonus (Max 100)
+              CASE WHEN sp.moq >= ?               THEN 100 ELSE 0 END +
               -- Width match (Max 150)
               CASE
                 WHEN REGEXP_REPLACE(LOWER(sp.width), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '')  THEN 150
@@ -1141,6 +1160,9 @@ export const getRecommendedSellers = async (req, res) => {
                 FROM seller_products WHERE product_id = sp4.product_id
               )
           ) as price_match,
+          
+          (SELECT la.assignment_status FROM lead_assignments la WHERE la.inquiry_id = ? AND la.seller_id = s.id LIMIT 1) as assignment_status,
+          (SELECT la.seller_notes FROM lead_assignments la WHERE la.inquiry_id = ? AND la.seller_id = s.id LIMIT 1) as seller_notes,
 
           (
             SELECT MIN(delivery_hours)
@@ -1242,8 +1264,9 @@ export const getRecommendedSellers = async (req, res) => {
       lead.state, lead.address,
       lead.state, lead.state,  // NCR check
 
-      // 4. product_score inner SELECT (7 params)
+      // 4. product_score inner SELECT (8 params)
       leadQty,              // stock_qty check
+      leadQty,              // moq fit (capacity bonus)
       leadWidth, leadWidth, // width regex
       leadThickness, leadThickness, // thickness regex
       lead.product_id,      // name match bonus
@@ -1256,6 +1279,7 @@ export const getRecommendedSellers = async (req, res) => {
       lead.product_id, leadQty, // has_stock
       lead.product_id, leadQty, // moq_fit
       lead.product_id, // price_match
+      lead.id, lead.id, // assignment_status & seller_notes
       lead.product_id, // best_delivery_hours
 
       // 6. Best Price / MOQ (2 params)
@@ -1686,7 +1710,7 @@ export const getInquiryAssignedSellers = async (req, res) => {
   const { id } = req.params;
   try {
     const [sellers] = await pool.query(
-      `SELECT s.id, s.company_name, u.mobile as phone 
+      `SELECT s.id, s.company_name, u.mobile as phone, la.assignment_status as status, la.seller_notes
        FROM sellers s
        JOIN users u ON s.user_id = u.id
        JOIN lead_assignments la ON s.id = la.seller_id
@@ -1974,3 +1998,70 @@ export const bulkUploadProducts = async (req, res) => {
   }
 };
 
+// --- ANALYTICS & CONVERSIONS ---
+
+export const getLeadAssignmentStats = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+    const { status, sellerId } = req.query;
+
+    let whereClause = "WHERE 1=1";
+    const params = [];
+
+    if (status) {
+      whereClause += " AND la.assignment_status = ?";
+      params.push(status);
+    }
+    if (sellerId) {
+      whereClause += " AND la.seller_id = ?";
+      params.push(sellerId);
+    }
+
+    const query = `
+      SELECT la.*, 
+             s.company_name as seller_name, s.seller_uid,
+             u.mobile as seller_mobile, u.email as seller_email,
+             i.product_id, i.buyer_name, i.phone as buyer_phone, i.city as buyer_city, i.state as buyer_state,
+             p.name as product_name
+      FROM lead_assignments la
+      JOIN sellers s ON la.seller_id = s.id
+      JOIN users u ON s.user_id = u.id
+      JOIN inquiries i ON la.inquiry_id = i.id
+      JOIN products p ON i.product_id = p.id
+      ${whereClause}
+      ORDER BY la.assigned_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    
+    const [rows] = await pool.query(query, [...params, limit, offset]);
+
+    // Summary Stats (Total, regardless of filters for KPI cards)
+    const [[{ total_sent }]] = await pool.query("SELECT COUNT(*) as total_sent FROM lead_assignments");
+    const [[{ total_fulfilled }]] = await pool.query("SELECT COUNT(*) as total_fulfilled FROM lead_assignments WHERE assignment_status = 'fulfilled'");
+    const [[{ total_accepted }]] = await pool.query("SELECT COUNT(*) as total_accepted FROM lead_assignments WHERE assignment_status = 'accepted'");
+    const [[{ total_rejected }]] = await pool.query("SELECT COUNT(*) as total_rejected FROM lead_assignments WHERE assignment_status = 'rejected'");
+
+    // Total for pagination based on filters
+    const [[{ filtered_total }]] = await pool.query(`SELECT COUNT(*) as filtered_total FROM lead_assignments la ${whereClause}`, params);
+
+    res.status(200).json({
+      success: true,
+      data: rows,
+      totalCount: filtered_total,
+      stats: {
+        total_sent,
+        total_fulfilled,
+        total_accepted,
+        total_rejected,
+        conversion_rate: total_sent > 0 ? ((total_fulfilled / total_sent) * 100).toFixed(1) : 0
+      },
+      totalPages: Math.ceil(filtered_total / limit),
+      currentPage: page
+    });
+  } catch (error) {
+    console.error("Error fetching lead assignment stats:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};

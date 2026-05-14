@@ -28,6 +28,11 @@ export const fetchSellerLeads = async () => {
   return response.data;
 };
 
+export const updateLeadStatus = async (assignmentId, status, notes = "") => {
+  const response = await API.patch(`/seller/leads/${assignmentId}/status`, { status, seller_notes: notes });
+  return response.data;
+};
+
 export const createSellerProduct = async (productData) => {
   const response = await API.post("/seller/products", productData);
   return response.data;

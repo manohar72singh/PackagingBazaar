@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
-import { updateSellerProfileAPI, fetchSellerProducts, fetchSellerOrders, fetchSellerLeads, deleteSellerProductAPI } from "../services/sellerServices";
+import { updateSellerProfileAPI, fetchSellerProducts, fetchSellerOrders, fetchSellerLeads, deleteSellerProductAPI, updateLeadStatus } from "../services/sellerServices";
 import { useNotification } from "../context/NotificationContext";
 import { getImageUrl } from "../services/api";
 import Pagination from "../components/ui/Pagination";
 import { motion } from "framer-motion";
 import { TableSkeleton } from "../components/ui/SkeletonLoader";
-import { Mail, Phone, MessageSquare, Clock, ArrowRight, UserCheck, Zap, MapPin, MessageCircle } from "lucide-react";
+import { Mail, Phone, MessageSquare, Clock, ArrowRight, UserCheck, Zap, MapPin, MessageCircle, CheckCircle2 } from "lucide-react";
 
 export function SellerDashboard() {
   const { seller, PRODUCTS, ORDERS, stats, icons, Icon, Badge, StatCard } = useOutletContext();
@@ -207,16 +207,22 @@ export function SellerProducts() {
 }
 
 export function SellerOrders() {
-  const { Badge } = useOutletContext();
+  const { Badge, icons, Icon } = useOutletContext();
   const [orders, setOrders] = useState([]);
+  const [leads, setLeads] = useState([]);
+  const [activeTab, setActiveTab] = useState('leads'); // 'orders' or 'leads'
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadOrders();
-  }, [page]);
+    if (activeTab === 'orders') {
+      loadOrders();
+    } else {
+      loadLeads();
+    }
+  }, [page, activeTab]);
 
   const loadOrders = async () => {
     setLoading(true);
@@ -234,19 +240,52 @@ export function SellerOrders() {
     }
   };
 
+  const loadLeads = async () => {
+    setLoading(true);
+    try {
+      const res = await fetchSellerLeads();
+      if (res.success) {
+        // Show both fulfilled and rejected in history
+        const history = res.data.filter(l => l.assignment_status === 'fulfilled' || l.assignment_status === 'rejected');
+        setLeads(history);
+        setTotalPages(1); 
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-black text-gray-900 uppercase tracking-tighter">Direct Orders</h2>
-        <p className="text-xs text-gray-500 mt-0.5">{totalOrders} total orders received</p>
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-black text-gray-900 uppercase tracking-tighter">Orders & History</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Manage your sales and lead history</p>
+        </div>
+
+        <div className="flex bg-gray-100 p-1 rounded-2xl w-full md:w-auto">
+          <button 
+            onClick={() => { setActiveTab('orders'); setPage(1); }}
+            className={`flex-1 md:px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'orders' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            Direct Orders
+          </button>
+          <button 
+            onClick={() => { setActiveTab('leads'); setPage(1); }}
+            className={`flex-1 md:px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'leads' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            Leads History
+          </button>
+        </div>
       </div>
 
       {loading ? (
         <TableSkeleton rows={6} cols={5} />
-      ) : (
+      ) : activeTab === 'orders' ? (
         <>
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            {/* Mobile: cards */}
             <div className="md:hidden divide-y divide-gray-50">
               {orders.map(o => (
                 <div key={o.id} className="p-4">
@@ -269,7 +308,6 @@ export function SellerOrders() {
                 </div>
               ))}
             </div>
-            {/* Desktop: table */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -302,16 +340,100 @@ export function SellerOrders() {
           </div>
           <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
         </>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          {leads.map((l, idx) => (
+            <motion.div
+              key={l.assignment_id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.05 }}
+              className={`bg-white rounded-2xl border p-4 shadow-sm transition-all ${
+                l.assignment_status === 'rejected' ? 'opacity-60 grayscale bg-gray-50' : 'border-green-100 bg-green-50/10'
+              }`}
+            >
+              <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+                <div className="flex gap-3 flex-1 min-w-0">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    l.assignment_status === 'fulfilled' ? 'bg-green-100 text-green-600' : 'bg-red-50 text-red-600'
+                  }`}>
+                    {l.assignment_status === 'fulfilled' ? <CheckCircle2 size={18} /> : <Zap size={18} />}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-black text-gray-900 text-sm uppercase">Lead #PB-LID-{l.id}</h4>
+                      <Badge color={l.assignment_status === 'fulfilled' ? 'green' : 'red'}>
+                        {l.assignment_status.toUpperCase()}
+                      </Badge>
+                    </div>
+                    <div className="text-xs font-bold text-gray-800 truncate mt-0.5">
+                      Req: <span className="text-accent">{l.product_name}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1 text-[10px] text-gray-400 font-bold uppercase">
+                      <MapPin size={10} />
+                      {l.city}, {l.state} • {new Date(l.assigned_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 md:justify-center flex-1">
+                  {l.quantity_required && (
+                    <div className="text-[9px] font-black text-gray-600 bg-gray-50 px-2 py-1 rounded border border-gray-100">
+                      QTY: {l.quantity_required}
+                    </div>
+                  )}
+                  {l.thickness && (
+                    <div className="text-[9px] font-black text-gray-600 bg-gray-50 px-2 py-1 rounded border border-gray-100">
+                      µ: {l.thickness}
+                    </div>
+                  )}
+                  {l.width && (
+                    <div className="text-[9px] font-black text-gray-600 bg-gray-50 px-2 py-1 rounded border border-gray-100">
+                      W: {l.width}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="text-right shrink-0 hidden md:block">
+                  <div className="text-[9px] font-black text-gray-400 uppercase">Completed On</div>
+                  <div className="text-xs font-bold text-gray-900">{new Date(l.assigned_at).toLocaleDateString()}</div>
+                </div>
+              </div>
+
+              {/* Requirement & Note */}
+              <div className="mt-3 pt-3 border-t border-gray-50 space-y-2">
+                <div className="bg-gray-50/50 p-2.5 rounded-xl border border-dashed border-gray-200">
+                  <span className="text-[8px] font-black text-gray-400 uppercase block mb-1">Requirement Message</span>
+                  <p className="text-[10px] text-gray-600 italic">"{l.message}"</p>
+                </div>
+                {l.assignment_note && (
+                  <div className="p-2 bg-orange-50/50 rounded-xl border border-orange-100 flex gap-2 items-center">
+                    <MessageCircle size={10} className="text-accent shrink-0" />
+                    <p className="text-[10px] text-gray-700 font-bold italic truncate">Admin Note: {l.assignment_note}</p>
+                  </div>
+                )}
+                {l.seller_notes && (
+                  <div className="p-2 bg-blue-50/50 rounded-xl border border-blue-100 flex gap-2 items-center">
+                    <UserCheck size={10} className="text-blue-600 shrink-0" />
+                    <p className="text-[10px] text-gray-700 font-bold italic truncate">Your Note: {l.seller_notes}</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
 export function SellerLeads() {
-  const { icons, Icon } = useOutletContext();
+  const { icons, Icon, Badge } = useOutletContext();
+  const { notifySuccess, notifyError } = useNotification();
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
-
+  const [statusModal, setStatusModal] = useState({ open: false, assignmentId: null, status: null, notes: "" });
+  const [submitting, setSubmitting] = useState(false);
   useEffect(() => {
     loadLeads();
   }, []);
@@ -330,11 +452,30 @@ export function SellerLeads() {
     }
   };
 
+  const submitStatusUpdate = async () => {
+    if (!statusModal.assignmentId || !statusModal.status) return;
+    setSubmitting(true);
+    try {
+      const res = await updateLeadStatus(statusModal.assignmentId, statusModal.status, statusModal.notes);
+      if (res.success) {
+        notifySuccess(`Lead marked as ${statusModal.status}!`);
+        setStatusModal({ open: false, assignmentId: null, status: null, notes: "" });
+        loadLeads();
+      }
+    } catch (err) {
+      notifyError("Failed to update status.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const activeLeads = leads.filter(l => l.assignment_status === 'pending' || l.assignment_status === 'accepted');
+
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-xl font-black text-gray-900 uppercase tracking-tighter">Business Leads</h2>
-        <p className="text-xs text-gray-500 mt-0.5">{leads.length} verified leads shared by admin</p>
+        <p className="text-xs text-gray-500 mt-0.5">{activeLeads.length} active leads shared by admin</p>
       </div>
 
       {loading ? (
@@ -343,36 +484,48 @@ export function SellerLeads() {
             <div key={i} className="h-32 bg-gray-50 rounded-3xl animate-pulse" />
           ))}
         </div>
-      ) : leads.length === 0 ? (
+      ) : activeLeads.length === 0 ? (
         <div className="bg-white rounded-[2.5rem] border border-gray-100 p-12 text-center">
           <div className="w-16 h-16 bg-gray-50 rounded-3xl flex items-center justify-center mx-auto mb-4">
             <MessageSquare className="text-gray-300" size={32} />
           </div>
-          <h3 className="font-bold text-gray-900 mb-1">No Shared Leads Yet</h3>
+          <h3 className="font-bold text-gray-900 mb-1">No Active Leads</h3>
           <p className="text-xs text-gray-500">Inquiries matched by admin will appear here.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3">
-          {leads.map((l, idx) => (
+          {activeLeads.map((l, idx) => (
             <motion.div
-              key={l.id}
+              key={l.assignment_id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.05 }}
-              className="bg-white rounded-2xl border border-gray-100 p-3.5 shadow-sm hover:border-accent/30 transition-all group"
+              className={`bg-white rounded-2xl border p-3.5 shadow-sm transition-all group ${
+                l.assignment_status === 'rejected' ? 'opacity-60 grayscale bg-gray-50' : 
+                l.assignment_status === 'fulfilled' ? 'border-green-200 bg-green-50/20' : 
+                'hover:border-accent/30 border-gray-100'
+              }`}
             >
               {/* Main Content Grid */}
               <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
                 
-                {/* Left: Buyer & Product Basic Info */}
+                {/* Left: Lead Info (PRIVACY: No Buyer Name/Phone) */}
                 <div className="flex gap-3 flex-1 min-w-0">
-                  <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-accent shrink-0">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                    l.assignment_status === 'fulfilled' ? 'bg-green-100 text-green-600' : 'bg-orange-50 text-accent'
+                  }`}>
                     <Zap size={18} />
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <h4 className="font-black text-gray-900 text-sm uppercase truncate">{l.buyer_name}</h4>
-                      <span className="text-[7px] bg-green-50 text-green-600 px-1.5 py-0.5 rounded-full font-black uppercase tracking-widest border border-green-100">Verified</span>
+                      <h4 className="font-black text-gray-900 text-sm uppercase truncate">Lead #PB-LID-{l.id}</h4>
+                      <Badge color={
+                        l.assignment_status === 'pending' ? 'orange' :
+                        l.assignment_status === 'accepted' ? 'blue' :
+                        l.assignment_status === 'fulfilled' ? 'green' : 'red'
+                      }>
+                        {l.assignment_status.toUpperCase()}
+                      </Badge>
                     </div>
                     <div className="text-xs font-bold text-gray-800 truncate mt-0.5">
                       Req: <span className="text-accent">{l.product_name}</span>
@@ -401,11 +554,6 @@ export function SellerLeads() {
                       W: <span className="text-accent">{l.width}</span>
                     </div>
                   )}
-                  {l.color && (
-                    <div className="text-[9px] font-black text-gray-600 bg-purple-50 px-2 py-1 rounded border border-purple-100">
-                      {l.color}
-                    </div>
-                  )}
                   {l.delivery_hours && (
                     <div className={`text-[9px] font-black px-2 py-1 rounded border ${
                       l.delivery_hours <= 24 ? "bg-orange-50 border-orange-100 text-orange-600" : "bg-blue-50 border-blue-100 text-blue-600"
@@ -415,7 +563,34 @@ export function SellerLeads() {
                   )}
                 </div>
 
-                {/* Right: Actions Removed (Admin handles communication) */}
+                {/* Right: Actions (Privacy Focused) */}
+                <div className="flex gap-2 w-full md:w-auto">
+                  {l.assignment_status === 'pending' && (
+                    <>
+                      <button 
+                        onClick={() => setStatusModal({ open: true, assignmentId: l.assignment_id, status: 'accepted', notes: "" })}
+                        className="flex-1 md:flex-none px-4 py-2 bg-green-600 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-sm hover:bg-green-700 transition-all"
+                      >
+                        Accept
+                      </button>
+                      <button 
+                        onClick={() => setStatusModal({ open: true, assignmentId: l.assignment_id, status: 'rejected', notes: "" })}
+                        className="flex-1 md:flex-none px-4 py-2 bg-white text-red-500 border border-red-100 rounded-xl font-black text-[10px] uppercase tracking-wider hover:bg-red-50 transition-all"
+                      >
+                        Reject
+                      </button>
+                    </>
+                  )}
+                  {l.assignment_status === 'accepted' && (
+                    <button 
+                      onClick={() => setStatusModal({ open: true, assignmentId: l.assignment_id, status: 'fulfilled', notes: "" })}
+                      className="w-full md:w-auto px-6 py-2 bg-black text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-md hover:bg-gray-800 transition-all flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle2 size={12} className="text-green-400" />
+                      Mark Fulfilled
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Collapsible Info (Message & Address) */}
@@ -441,6 +616,55 @@ export function SellerLeads() {
               )}
             </motion.div>
           ))}
+        </div>
+      )}
+
+      {/* Status Update Modal */}
+      {statusModal.open && (
+        <div className="fixed inset-0 z-[100] bg-gray-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-[2rem] p-8 max-w-md w-full shadow-2xl relative border border-gray-100"
+          >
+            <h3 className="font-syne font-black text-xl text-gray-900 uppercase mb-2">
+              {statusModal.status === 'accepted' ? 'Accept Lead' : 
+               statusModal.status === 'rejected' ? 'Reject Lead' : 'Mark as Fulfilled'}
+            </h3>
+            <p className="text-xs text-gray-500 font-medium mb-6">
+              {statusModal.status === 'accepted' ? 'Are you sure you want to accept this lead? You can add a note for the admin.' :
+               statusModal.status === 'rejected' ? 'Please provide a reason for rejecting this lead.' :
+               'Congratulations! Please confirm the fulfillment of this lead.'}
+            </p>
+            
+            <textarea
+              value={statusModal.notes}
+              onChange={(e) => setStatusModal({ ...statusModal, notes: e.target.value })}
+              placeholder={statusModal.status === 'rejected' ? "Reason for rejection..." : "Add a note (optional)..."}
+              className="w-full text-sm text-gray-700 p-4 rounded-2xl border border-gray-200 bg-gray-50 outline-none focus:border-accent resize-none h-32 mb-6"
+            />
+            
+            <div className="flex gap-3 justify-end">
+              <button 
+                disabled={submitting}
+                onClick={() => setStatusModal({ open: false, assignmentId: null, status: null, notes: "" })}
+                className="px-6 py-3 rounded-xl text-xs font-black uppercase text-gray-500 hover:bg-gray-100 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button 
+                disabled={submitting}
+                onClick={submitStatusUpdate}
+                className={`px-6 py-3 rounded-xl text-xs font-black uppercase text-white flex items-center gap-2 shadow-lg transition-all disabled:opacity-50 ${
+                  statusModal.status === 'accepted' ? 'bg-green-600 hover:bg-green-700' :
+                  statusModal.status === 'rejected' ? 'bg-red-600 hover:bg-red-700' : 'bg-black hover:bg-gray-800'
+                }`}
+              >
+                {submitting ? <Zap size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                {submitting ? "Updating..." : "Confirm Update"}
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
     </div>

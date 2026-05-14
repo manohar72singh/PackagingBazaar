@@ -426,6 +426,30 @@ export default function AdminInquiries() {
                   </div>
                 </div>
 
+                {/* Assigned Sellers Progress Tracking */}
+                {inquiry.assigned_sellers && inquiry.assigned_sellers.length > 0 && (
+                  <div className="mt-6 px-6 md:px-8 py-3 bg-gray-50/30 rounded-2xl border border-dashed border-gray-100 flex flex-wrap items-center gap-3">
+                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest mr-2 flex items-center gap-1.5">
+                      <Zap size={10} className="text-accent" />
+                      Assignment Tracking:
+                    </span>
+                    {inquiry.assigned_sellers.map((as, idx) => (
+                      <div key={idx} className="flex items-center gap-2 bg-white border border-gray-100 rounded-xl px-3 py-1.5 shadow-sm">
+                        <span className="text-[10px] font-black text-gray-700 uppercase truncate max-w-[120px]">{as.company_name}</span>
+                        <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter ${
+                          as.status === 'fulfilled' ? 'bg-green-600 text-white shadow-sm shadow-green-100' :
+                          as.status === 'accepted' ? 'bg-blue-600 text-white shadow-sm shadow-blue-100' :
+                          as.status === 'rejected' ? 'bg-red-600 text-white shadow-sm shadow-red-100' :
+                          as.status === 'pending' ? 'bg-orange-500 text-white shadow-sm shadow-orange-100' :
+                          'bg-gray-100 text-gray-400'
+                        }`}>
+                          {as.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Footer Section: Admin Notes & Won Info */}
                 <div className="mt-5 pt-4 border-t border-gray-50 flex flex-col md:flex-row items-center gap-4">
                   <div className="flex-1 w-full flex items-center gap-3">
@@ -549,7 +573,16 @@ function StatusModal({ modal, onClose, onConfirm }) {
                     >
                       <div>
                         <p className="text-sm font-black text-gray-900 uppercase">{s.company_name}</p>
-                        <p className="text-[10px] text-gray-400 font-bold">{s.phone}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="text-[10px] text-gray-400 font-bold">{s.phone}</p>
+                          {s.status && (
+                            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${
+                              s.status === 'fulfilled' ? 'bg-green-100 text-green-600' :
+                              s.status === 'accepted' ? 'bg-blue-100 text-blue-600' :
+                              'bg-gray-100 text-gray-500'
+                            }`}>{s.status}</span>
+                          )}
+                        </div>
                       </div>
                       {winnerId === s.id && <CheckCircle2 size={18} className="text-green-500" />}
                     </button>

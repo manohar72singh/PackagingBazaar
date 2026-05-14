@@ -50,6 +50,7 @@ export default function AdminLayout() {
         { to: "/admin/reviews", icon: <Star size={18} />, label: "Product Reviews" },
         { to: "/admin/contacts", icon: <Mail size={18} />, label: "Contact Messages" },
         { to: "/admin/broadcast", icon: <Megaphone size={18} />, label: "Broadcast Alerts" },
+        { to: "/admin/conversion-tracking", icon: <CheckCircle size={18} />, label: "Conversion Hub" },
         { to: "/admin/blogs", icon: <BookOpen size={18} />, label: "Blog Manager" },
       ]
     },

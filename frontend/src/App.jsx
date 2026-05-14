@@ -48,6 +48,7 @@ import AdminBroadcast from "./Admin/pages/AdminBroadcast";
 import AdminNotifications from "./Admin/pages/AdminNotifications";
 import AdminBlogs from "./Admin/pages/AdminBlogs";
 import AdminAddEditBlog from "./Admin/pages/AdminAddEditBlog";
+import AdminLeadAnalytics from "./Admin/pages/AdminLeadAnalytics";
 
 // Seller
 import { SellerDashboard, SellerProducts, SellerOrders, SellerLeads, SellerProfile } from "./Seller/SellerDashboard";
@@ -109,6 +110,7 @@ export default function App() {
                   <Route path="/admin/contacts" element={<AdminContacts />} />
                   <Route path="/admin/reviews" element={<AdminReviews />} />
                   <Route path="/admin/broadcast" element={<AdminBroadcast />} />
+                  <Route path="/admin/conversion-tracking" element={<AdminLeadAnalytics />} />
                   <Route path="/admin/notifications" element={<AdminNotifications />} />
                   <Route path="/admin/seller-hub" element={<AdminSellerHub />} />
                   <Route path="/admin/add-product" element={<AdminAddProduct />} />

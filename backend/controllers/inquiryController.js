@@ -1,5 +1,6 @@
 import pool from "../config/db.js";
 import { sendNotification } from "../utils/notificationHelper.js";
+import { sendEmail } from "../utils/mailHelper.js";
 import { getCoordinates } from "../utils/geoUtils.js";
 
 // 1. Submit a Buyer Inquiry (Lead)
@@ -118,35 +119,78 @@ export const shareLeadToSeller = async (req, res) => {
 
         let seller_id = providedSellerId;
 
+        // Fetch inquiry details if seller_id is not provided or for email content
+        const [inquiryRows] = await pool.query(`
+            SELECT i.*, p.name as product_name 
+            FROM inquiries i 
+            JOIN products p ON i.product_id = p.id 
+            WHERE i.id = ?
+        `, [id]);
+
+        if (inquiryRows.length === 0) return res.status(404).json({ success: false, message: "Inquiry not found" });
+        const inquiry = inquiryRows[0];
+
         if (!seller_id) {
-            const [rows] = await pool.query("SELECT seller_id FROM inquiries WHERE id = ?", [id]);
-            if (rows.length === 0) return res.status(404).json({ success: false, message: "Inquiry not found" });
-            seller_id = rows[0].seller_id;
+            seller_id = inquiry.seller_id;
         }
 
+        // 1. Check if already assigned to this seller
+        const [existing] = await pool.query("SELECT assignment_status FROM lead_assignments WHERE inquiry_id = ? AND seller_id = ?", [id, seller_id]);
+        if (existing.length > 0) {
+            return res.status(400).json({ success: false, message: "This lead is already shared with this seller." });
+        }
+
+        // 2. Insert Assignment
         const query = `
             INSERT INTO lead_assignments (inquiry_id, seller_id, assignment_note) 
             VALUES (?, ?, ?) 
-            ON DUPLICATE KEY UPDATE assignment_note = VALUES(assignment_note)
         `;
         await pool.query(query, [id, seller_id, assignment_note || null]);
         await pool.query("UPDATE inquiries SET is_assigned = 1, assigned_at = NOW() WHERE id = ?", [id]);
 
-        // Notify Seller
-        try {
-            const [sellerUserRows] = await pool.query("SELECT user_id FROM sellers WHERE id = ?", [seller_id]);
-            if (sellerUserRows.length > 0) {
+        // 3. Fetch Seller Email for Notification
+        const [sellerRows] = await pool.query(`
+            SELECT s.company_name, u.email, u.id as user_id 
+            FROM sellers s 
+            JOIN users u ON s.user_id = u.id 
+            WHERE s.id = ?
+        `, [seller_id]);
+
+        if (sellerRows.length > 0) {
+            const seller = sellerRows[0];
+
+            // Platform Notification
+            try {
                 await sendNotification({
-                    userId: sellerUserRows[0].user_id,
+                    userId: seller.user_id,
                     userRole: 'seller',
                     title: 'New Lead Assigned',
-                    message: `Admin has assigned a new verified lead to you. Check your dashboard for details.`,
+                    message: `Admin has assigned a new verified lead (ID: PB-LID-${id}) to you.`,
                     type: 'lead',
                     link: '/seller/leads'
                 });
-            }
-        } catch (notifErr) {
-            console.error("Notification Error:", notifErr);
+            } catch (notifErr) { console.error("Notification Error:", notifErr); }
+
+            // Email Notification
+            const emailSubject = `[New Lead] PB-LID-${id}: ${inquiry.product_name} Requirement`;
+            const emailHtml = `
+                <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                    <h2 style="color: #e8511a;">New Business Lead Assigned</h2>
+                    <p>Hello <strong>${seller.company_name}</strong>,</p>
+                    <p>Admin has shared a new verified inquiry with you. Please review the details below:</p>
+                    <div style="background: #f9f9f9; padding: 15px; border-radius: 10px; border-left: 4px solid #e8511a;">
+                        <p><strong>Lead ID:</strong> PB-LID-${id}</p>
+                        <p><strong>Product:</strong> ${inquiry.product_name}</p>
+                        <p><strong>Quantity:</strong> ${inquiry.quantity_required || 'Not specified'}</p>
+                        <p><strong>Specs:</strong> ${inquiry.thickness || ''} ${inquiry.width || ''}</p>
+                        <p><strong>Location:</strong> ${inquiry.city}, ${inquiry.state} - ${inquiry.pincode}</p>
+                        <p><strong>Address:</strong> ${inquiry.address || 'N/A'}</p>
+                    </div>
+                    <p><em>Note: Buyer contact information is hidden for privacy. Please update your status on the dashboard to coordinate with Admin.</em></p>
+                    <a href="https://packagingbazaar.co.in/seller/dashboard" style="display: inline-block; background: #e8511a; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin-top: 15px;">View on Dashboard</a>
+                </div>
+            `;
+            await sendEmail(seller.email, emailSubject, "", emailHtml);
         }
 
         res.status(200).json({ success: true, message: "Lead shared successfully!" });
@@ -166,14 +210,17 @@ export const getSellerLeads = async (req, res) => {
         }
         const seller_id = sellerRows[0].id;
 
+        // NOTE: phone, buyer_email, buyer_name are EXCLUDED for privacy as per requirements
         const query = `
-            SELECT i.*, p.name as product_name, p.image_url, p.color,
+            SELECT i.id, i.product_id, i.message, i.quantity_required, i.thickness, i.width,
+                   i.pincode, i.city, i.state, i.address, i.created_at,
+                   p.name as product_name, p.image_url, p.color,
                    COALESCE(
                      sp.delivery_hours,
                      (SELECT MIN(sp2.delivery_hours) FROM seller_products sp2 WHERE sp2.product_id = i.product_id AND sp2.delivery_hours IS NOT NULL),
                      p.delivery_time
                    ) as delivery_hours,
-                   la.assigned_at, la.assignment_note
+                   la.id as assignment_id, la.assigned_at, la.assignment_note, la.assignment_status
             FROM lead_assignments la
             JOIN inquiries i ON la.inquiry_id = i.id
             JOIN products p ON i.product_id = p.id
@@ -185,6 +232,104 @@ export const getSellerLeads = async (req, res) => {
         res.status(200).json({ success: true, data: rows });
     } catch (err) {
         console.error("Error fetching seller leads:", err);
+        res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
+
+// 6. Update Lead Assignment Status (Seller Side)
+export const updateAssignmentStatus = async (req, res) => {
+    try {
+        const { assignmentId } = req.params;
+        const { status, seller_notes } = req.body;
+        const userId = req.user.id;
+
+        // Verify seller ownership
+        const [check] = await pool.query(`
+            SELECT la.id FROM lead_assignments la 
+            JOIN sellers s ON la.seller_id = s.id 
+            WHERE la.id = ? AND s.user_id = ?
+        `, [assignmentId, userId]);
+
+        if (check.length === 0) {
+            return res.status(403).json({ success: false, message: "Unauthorized or Assignment not found." });
+        }
+
+        const validStatuses = ['pending', 'accepted', 'rejected', 'fulfilled'];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ success: false, message: "Invalid status." });
+        }
+
+        await pool.query(
+            "UPDATE lead_assignments SET assignment_status = ?, seller_notes = ? WHERE id = ?",
+            [status, seller_notes || null, assignmentId]
+        );
+
+        // Notify Admin if lead is fulfilled or rejected
+        if (status === 'fulfilled' || status === 'rejected') {
+            try {
+                const [details] = await pool.query(`
+                    SELECT i.id as inquiry_id, s.company_name, u.mobile as seller_phone
+                    FROM lead_assignments la
+                    JOIN inquiries i ON la.inquiry_id = i.id
+                    JOIN sellers s ON la.seller_id = s.id
+                    JOIN users u ON s.user_id = u.id
+                    WHERE la.id = ?
+                `, [assignmentId]);
+
+                if (details.length > 0) {
+                    const lead = details[0];
+                    const [admins] = await pool.query("SELECT id, email FROM users WHERE role = 'admin' LIMIT 1");
+                    
+                    if (admins.length > 0) {
+                        const admin = admins[0];
+                        
+                        const title = status === 'fulfilled' ? 'Lead Fulfilled' : 'Lead Rejected';
+                        const statusColor = status === 'fulfilled' ? '#22c55e' : '#ef4444';
+                        
+                        // 1. Platform Notification
+                        await sendNotification({
+                            userId: admin.id,
+                            userRole: 'admin',
+                            title: title,
+                            message: `Seller ${lead.company_name} has marked Lead PB-LID-${lead.inquiry_id} as ${status.charAt(0).toUpperCase() + status.slice(1)}.`,
+                            type: 'lead',
+                            link: '/admin/inquiries'
+                        });
+
+                        // 2. Email Notification
+                        const subject = `[${status.toUpperCase()}] Lead PB-LID-${lead.inquiry_id} by ${lead.company_name}`;
+                        const html = `
+                            <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; border: 1px solid #eee; border-radius: 12px;">
+                                <h2 style="color: ${statusColor}; margin-top: 0;">${status === 'fulfilled' ? '✓' : '✗'} Lead ${status.charAt(0).toUpperCase() + status.slice(1)}</h2>
+                                <p>Hello Admin,</p>
+                                <p>The seller <strong>${lead.company_name}</strong> has updated the status of an assigned lead.</p>
+                                
+                                <div style="background: #f9fafb; padding: 20px; border-radius: 10px; border-left: 5px solid ${statusColor}; margin: 20px 0;">
+                                    <p style="margin: 5px 0;"><strong>Lead ID:</strong> PB-LID-${lead.inquiry_id}</p>
+                                    <p style="margin: 5px 0;"><strong>Seller:</strong> ${lead.company_name}</p>
+                                    <p style="margin: 5px 0;"><strong>Seller Phone:</strong> <a href="tel:${lead.seller_phone}" style="color: #4f46e5; text-decoration: none; font-weight: bold;">${lead.seller_phone || 'N/A'}</a></p>
+                                    <p style="margin: 5px 0;"><strong>Status:</strong> <span style="color: ${statusColor}; font-weight: bold; text-transform: uppercase;">${status}</span></p>
+                                    <p style="margin: 10px 0 0 0; font-style: italic; color: #666;"><strong>Seller Notes:</strong> ${seller_notes || 'No notes provided'}</p>
+                                </div>
+
+                                <p>You can review this assignment and take necessary actions (like re-assigning if rejected) from your dashboard.</p>
+                                
+                                <div style="text-align: center; margin-top: 30px;">
+                                    <a href="https://packagingbazaar.co.in/admin/inquiries" style="display: inline-block; background: #000; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px;">Open Admin Dashboard</a>
+                                </div>
+                            </div>
+                        `;
+                        await sendEmail(admin.email, subject, "", html);
+                    }
+                }
+            } catch (notifErr) {
+                console.error("Status Change Notification Error:", notifErr);
+            }
+        }
+
+        res.status(200).json({ success: true, message: "Status updated successfully!" });
+    } catch (err) {
+        console.error("Error updating assignment status:", err);
         res.status(500).json({ success: false, message: "Server Error" });
     }
 };
