@@ -198,7 +198,7 @@ export default function AddressManager() {
                     <button 
                       key={t.val} type="button" 
                       onClick={() => setFormData({...formData, tag: t.val})}
-                      className={`flex-1 py-1.5 rounded-lg text-[10px] font-black border flex items-center justify-center gap-1.5 transition-all duration-200 ${formData.tag === t.val ? "bg-gray-900 text-white border-gray-900 shadow-md" : "bg-white text-gray-400 border-gray-100 hover:border-gray-200"}`}
+                      className={`flex-1 py-1.5 rounded-lg text-[10px] font-black border flex items-center justify-center gap-1.5 transition-all duration-200 ${formData.tag === t.val ? "bg-accent text-white border-accent shadow-md shadow-orange-500/10" : "bg-white text-gray-400 border-gray-100 hover:border-gray-200"}`}
                     >
                       {t.icon} {t.val}
                     </button>
@@ -247,7 +247,7 @@ export default function AddressManager() {
 
               <button 
                 type="submit"
-                className="w-full bg-gray-900 text-white py-3.5 rounded-xl font-bold text-sm hover:bg-black active:scale-95 transition-all duration-200 mt-1 shadow-lg shadow-black/5"
+                className="w-full bg-accent text-white py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-orange-700 active:scale-[0.98] transition-all duration-200 mt-1 shadow-lg shadow-orange-500/10"
               >
                 {editingAddress ? "Update" : "Save Address"}
               </button>

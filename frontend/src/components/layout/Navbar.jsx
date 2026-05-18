@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ShoppingCart, Menu, X, Package, User, LogOut,
-  LayoutDashboard, ShieldCheck, Store, ChevronDown, Users
+  LayoutDashboard, ShieldCheck, Store, ChevronDown, Users, ClipboardList
 } from "lucide-react";
 import { useCart } from "../../context/CartContext";
 import NotificationPanel from "../notifications/NotificationPanel";
@@ -70,8 +70,8 @@ function ProfileMenu({ user, onLogout }) {
                 <button onClick={() => { navigate("/cart"); setOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-ink2 hover:bg-surface hover:text-accent transition-colors">
                   <ShoppingCart size={15} /> My Cart
                 </button>
-                <button onClick={() => { navigate("/profile?tab=orders"); setOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-ink2 hover:bg-surface hover:text-accent transition-colors">
-                  <Package size={15} /> My Orders
+                <button onClick={() => { navigate("/profile?tab=requirements"); setOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-ink2 hover:bg-surface hover:text-accent transition-colors">
+                  <ClipboardList size={15} /> My Requirements
                 </button>
               </>
             )}
@@ -247,8 +247,8 @@ export default function Navbar() {
                             </button>
                           )}
                           {user.role !== "admin" && (
-                            <button onClick={() => { navigate("/profile?tab=orders"); setOpen(false); }} className="w-full flex items-center gap-3 bg-white border border-black/[0.08] px-4 py-4 rounded-xl text-sm font-bold text-ink2 hover:bg-surface transition-colors">
-                              <Package size={18} className="text-accent" /> My Orders
+                            <button onClick={() => { navigate("/profile?tab=requirements"); setOpen(false); }} className="w-full flex items-center gap-3 bg-white border border-black/[0.08] px-4 py-4 rounded-xl text-sm font-bold text-ink2 hover:bg-surface transition-colors">
+                              <ClipboardList size={18} className="text-accent" /> My Requirements
                             </button>
                           )}
                         </div>

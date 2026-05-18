@@ -27,7 +27,16 @@ export const register = async (req, res) => {
     // FIX: 'is_verified' explicitly set to 1 (Normal user auto-verified)
     const query =
       'INSERT INTO users (name, email, mobile, password, role, is_verified) VALUES (?, ?, ?, ?, "user", 1)';
-    await pool.query(query, [name, email, mobile, hashedPassword]);
+    const [result] = await pool.query(query, [name, email, mobile, hashedPassword]);
+    const userId = result.insertId;
+
+    // Link historical guest inquiries matching this mobile number
+    if (mobile) {
+      await pool.query(
+        "UPDATE inquiries SET buyer_id = ? WHERE phone = ? AND buyer_id IS NULL",
+        [userId, mobile]
+      );
+    }
 
     res.status(201).json({ success: true, message: "Account created successfully!" });
   } catch (err) {
@@ -59,6 +68,14 @@ export const login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: "Invalid password!" });
+    }
+
+    // Sync any historical guest inquiries on login
+    if (user.mobile) {
+      await pool.query(
+        "UPDATE inquiries SET buyer_id = ? WHERE phone = ? AND buyer_id IS NULL",
+        [user.id, user.mobile]
+      );
     }
 
     const token = jwt.sign(

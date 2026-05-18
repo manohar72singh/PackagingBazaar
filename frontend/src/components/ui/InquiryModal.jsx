@@ -287,6 +287,7 @@ import { createPortal } from "react-dom";
 import { X, Send, Package, MessageSquare, ShieldCheck, Ruler, Phone, MapPin, User, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { submitInquiryAPI } from "../../services/inquiryServices";
 import { useNotification } from "../../context/NotificationContext";
+import { fetchUserData } from "../../services/authServices";
 
 export default function InquiryModal({ isOpen, onClose, product, customSubmit }) {
   const [quantity, setQuantity] = useState("");
@@ -317,6 +318,26 @@ export default function InquiryModal({ isOpen, onClose, product, customSubmit })
         }
     }
   }, [isOpen, product]);
+
+  // Fetch and auto-fill user details if logged in
+  useEffect(() => {
+    if (isOpen && token) {
+      const getUserData = async () => {
+        try {
+          const res = await fetchUserData();
+          if (res.success && res.user) {
+            setBuyerName(res.user.name || "");
+            if (res.user.mobile) {
+              setPhone(res.user.mobile);
+            }
+          }
+        } catch (err) {
+          console.error("Error fetching user data in modal:", err);
+        }
+      };
+      getUserData();
+    }
+  }, [isOpen, token]);
 
   if (!isOpen || !product) return null;
 

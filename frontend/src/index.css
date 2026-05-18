@@ -61,3 +61,19 @@ body {
 .blog-content a:hover { color: #c93f10; }
 .blog-content hr { border: none; border-top: 2px solid #e5e7eb; margin: 1.5rem 0; }
 .blog-content img { border-radius: 1rem; max-width: 100%; margin: 1rem auto; display: block; }
+
+/* ── Custom Premium Scrollbar Utility ────────────────────── */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

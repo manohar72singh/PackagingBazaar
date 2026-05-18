@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { User, Mail, ShieldCheck, Calendar, Edit3, Save, X, ArrowLeft, Settings, Bell, Lock, MapPin, Package } from "lucide-react";
+import { User, Mail, ShieldCheck, Calendar, Edit3, Save, X, ArrowLeft, Settings, Bell, Lock, MapPin, Package, ClipboardList } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { fetchUserProfile, updateUserProfileAPI } from "../services/userServices";
 import AddressManager from "../components/profile/AddressManager";
 import OrderHistory from "../components/profile/OrderHistory";
+import InquiryHistory from "../components/profile/InquiryHistory";
 import { useNotification } from "../context/NotificationContext";
 
 export default function UserProfile() {
@@ -68,16 +69,16 @@ export default function UserProfile() {
     <div className="min-h-screen bg-gray-50 pb-12">
       
       {/* Header Space */}
-      <div className="h-32 bg-gray-900 border-b border-white/5 relative overflow-hidden">
+      <div className="h-20 bg-gray-900 border-b border-white/5 relative overflow-hidden">
          <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 10% 50%, #e8511a 0%, transparent 50%)" }} />
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 -mt-16 relative z-10">
+      <div className="max-w-4xl mx-auto px-4 -mt-10 relative z-10">
         
         {/* Profile Hero Card */}
-        <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 p-6 sm:p-8 mb-8">
+        <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 p-4 sm:p-5 mb-5">
           <div className="flex flex-col sm:flex-row items-center sm:items-end gap-6">
-            <div className="w-24 h-24 bg-accent text-white rounded-3xl flex items-center justify-center text-3xl font-black shadow-2xl shadow-orange-500/30">
+            <div className="w-16 h-16 bg-accent text-white rounded-2xl flex items-center justify-center text-xl font-black shadow-2xl shadow-orange-500/30 shrink-0">
               {initials}
             </div>
             
@@ -106,6 +107,9 @@ export default function UserProfile() {
                 <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 bg-blue-50 text-blue-600 border border-blue-100 rounded-full">
                   <ShieldCheck size={12} /> {user.role.toUpperCase()}
                 </span>
+                <span className="flex items-center gap-1.5 text-xs font-black px-2.5 py-1 bg-gray-100 text-gray-600 border border-gray-200 rounded-full uppercase tracking-wider">
+                  UID: PB-UID-{user.id}
+                </span>
                 <span className="flex items-center gap-1.5 text-xs text-gray-400">
                   <Calendar size={12} /> Joined {new Date(user.created_at).toLocaleDateString()}
                 </span>
@@ -121,7 +125,7 @@ export default function UserProfile() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           
           {/* Left / Navigation Column */}
           <div className="md:col-span-1 space-y-4">
@@ -130,13 +134,13 @@ export default function UserProfile() {
               <div className="space-y-1">
                 {[
                   { id: "profile", icon: <User size={16} />, label: "Personal Info" },
-                  { id: "orders", icon: <Package size={16} />, label: "My Orders" },
+                  { id: "requirements", icon: <ClipboardList size={16} />, label: "My Requirements" },
                   { id: "address", icon: <MapPin size={16} />, label: "Saved Addresses" },
                 ].map(item => (
                   <button 
                     key={item.id} 
                     onClick={() => setActiveTab(item.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === item.id ? "bg-gray-900 text-white shadow-lg" : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"}`}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === item.id ? "bg-accent text-white shadow-md shadow-orange-500/20" : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"}`}
                   >
                     {item.icon} {item.label}
                   </button>
@@ -189,15 +193,15 @@ export default function UserProfile() {
               </div>
             )}
 
-            {activeTab === "address" && (
+            {activeTab === "requirements" && (
               <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 animate-fadeIn">
-                 <AddressManager />
+                 <InquiryHistory />
               </div>
             )}
             
-            {activeTab === "orders" && (
+            {activeTab === "address" && (
               <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 animate-fadeIn">
-                 <OrderHistory />
+                 <AddressManager />
               </div>
             )}
 
