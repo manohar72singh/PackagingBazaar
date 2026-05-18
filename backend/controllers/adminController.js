@@ -642,6 +642,27 @@ export const getAllInquiriesAdmin = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
+    const search = req.query.search?.trim() || '';
+
+    // Build WHERE clause for search
+    let whereClause = '';
+    let searchParams = [];
+    if (search) {
+      // Check if it's a Lead ID search (numeric or PB-LID-X / LID-X / #X format)
+      const leadIdMatch = search.match(/^(?:pb-lid-|lid-|#)?(\d+)$/i);
+      if (leadIdMatch) {
+        whereClause = 'WHERE i.id = ?';
+        searchParams = [parseInt(leadIdMatch[1])];
+      } else {
+        whereClause = `WHERE (
+          COALESCE(u.name, i.buyer_name) LIKE ? OR
+          p.name LIKE ? OR
+          s.company_name LIKE ?
+        )`;
+        const like = `%${search}%`;
+        searchParams = [like, like, like];
+      }
+    }
 
     const query = `
       SELECT i.*, 
@@ -668,17 +689,25 @@ export const getAllInquiriesAdmin = async (req, res) => {
       JOIN products p ON i.product_id = p.id
       JOIN sellers s ON i.seller_id = s.id
       LEFT JOIN sellers ws ON i.won_seller_id = ws.id
+      ${whereClause}
       ORDER BY i.id DESC
       LIMIT ? OFFSET ?
     `;
-    const [rows] = await pool.query(query, [limit, offset]);
+    const [rows] = await pool.query(query, [...searchParams, limit, offset]);
 
     const inquiries = rows.map(row => ({
       ...row,
       assigned_sellers: typeof row.assigned_sellers === 'string' ? JSON.parse(row.assigned_sellers) : row.assigned_sellers
     }));
 
-    const [[{ total }]] = await pool.query("SELECT COUNT(*) as total FROM inquiries");
+    const countQuery = `
+      SELECT COUNT(*) as total FROM inquiries i
+      LEFT JOIN users u ON i.buyer_id = u.id
+      JOIN products p ON i.product_id = p.id
+      JOIN sellers s ON i.seller_id = s.id
+      ${whereClause}
+    `;
+    const [[{ total }]] = await pool.query(countQuery, searchParams);
 
     res.status(200).json({ 
       success: true, 
@@ -692,6 +721,7 @@ export const getAllInquiriesAdmin = async (req, res) => {
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
 
 // updateInquiryStatus moved to the end of file for cleaner organization
 
@@ -776,202 +806,7 @@ export const toggleTrending = async (req, res) => {
   }
 };
 
-// 17. Get Recommended Sellers for a lead (Phase 2 - Smart Matching)
-// export const getRecommendedSellers = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-    
-//     // 1. Get lead details
-//     const [leadRows] = await pool.query(
-//       `SELECT i.*, p.sub_category_id, sc.category_id, p.product_type, p.group_key
-//        FROM inquiries i 
-//        JOIN products p ON i.product_id = p.id 
-//        LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
-//        WHERE i.id = ?`,
-//       [id]
-//     );
 
-//     if (leadRows.length === 0) {
-//       return res.status(404).json({ success: false, message: "Lead not found" });
-//     }
-
-//     const lead = leadRows[0];
-    
-//     // Helper function to extract number from string (e.g., "500 kg" -> 500)
-//     const parseQty = (str) => {
-//       if (!str) return 0;
-//       const match = str.match(/(\d+)/);
-//       return match ? parseInt(match[1]) : 0;
-//     };
-
-//     const leadQty = parseQty(lead.quantity_required);
-//     const leadThickness = lead.thickness ? lead.thickness.toLowerCase() : null;
-//     const leadWidth = lead.width ? lead.width.toLowerCase() : null;
-
-//     // 1.1 Get Lead Coordinates
-//     const leadCoords = await getCoordinates(lead.pincode);
-//     const bLat = leadCoords?.latitude || null;
-//     const bLng = leadCoords?.longitude || null;
-
-//     // 2. Fetch all verified sellers with smart matching logic
-//     // New IndiaMART Style Layered Filtering & Smart Scoring (Max ~1500 Pts)
-//     // - Distance: 0-10km (200), 10-50km (150), 50-100km (100), 100km+ (50/fallback)
-//     // - Location: City (50), State (20) - fallback if lat/lng missing
-//     // - Specifications Match: Exact (150), Custom/All/Null (100), Mismatch (0)
-//     // - Delivery Speed: <= 24h (150), <= 48h (100), <= 72h (50)
-//     // - Stock & Price are dynamically scored based on averages
-    
-//     const query = `
-//       SELECT * FROM (
-//         SELECT s.id as seller_id, s.company_name, s.city, s.state, s.pincode, s.business_address as address, s.status as seller_status,
-//         u.email, u.mobile as phone, u.name as owner_name,
-//         pg.latitude as seller_lat, pg.longitude as seller_lng,
-//         -- Distance Calculation (Using Robust Law of Cosines with NaN Protection)
-//         (6371 * acos(LEAST(1, GREATEST(-1, cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))))) AS distance_km,
-        
-//         -- Location Score Breakdown (Max 200)
-//         (
-//           CASE 
-//             WHEN (6371 * acos(LEAST(1, GREATEST(-1, cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))))) <= 10 THEN 200
-//             WHEN (6371 * acos(LEAST(1, GREATEST(-1, cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))))) <= 50 THEN 150
-//             WHEN (6371 * acos(LEAST(1, GREATEST(-1, cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))))) <= 100 THEN 100
-//             WHEN (6371 * acos(LEAST(1, GREATEST(-1, cos(radians(?)) * cos(radians(pg.latitude)) * cos(radians(pg.longitude) - radians(?)) + sin(radians(?)) * sin(radians(pg.latitude)))))) <= 300 THEN 50
-//             WHEN s.pincode = ? THEN 150
-//             WHEN LOWER(s.city) = LOWER(?) OR LOWER(?) LIKE CONCAT('%', LOWER(s.city), '%') THEN 50 
-//             WHEN LOWER(s.state) = LOWER(?) OR LOWER(?) LIKE CONCAT('%', LOWER(s.state), '%') THEN 20 
-//             WHEN (
-//               (LOWER(?) LIKE '%delhi%' OR LOWER(?) LIKE '%ncr%') AND 
-//               (LOWER(s.city) IN ('ghaziabad', 'noida', 'greater noida', 'gurgaon', 'gurugram', 'faridabad', 'sonepat', 'bahadurgarh'))
-//             ) THEN 150
-//             ELSE 0 
-//           END
-//         ) as location_score,
-
-
-//         -- Product Score Breakdown
-//         COALESCE((
-//           SELECT MAX(
-//             CASE 
-//               WHEN sp.delivery_hours IS NULL THEN 0
-//               WHEN sp.delivery_hours <= 24 THEN 150
-//               WHEN sp.delivery_hours <= 48 THEN 100
-//               WHEN sp.delivery_hours <= 72 THEN 50
-//               ELSE 0 
-//             END +
-//             CASE 
-//               WHEN sp.price_min <= (SELECT COALESCE(MIN(price_min), sp.price_min) FROM seller_products WHERE product_id = sp.product_id) THEN 250
-//               WHEN sp.price_min <= (SELECT COALESCE(AVG(price_min), sp.price_min) FROM seller_products WHERE product_id = sp.product_id) THEN 150 
-//               ELSE 50 
-//             END +
-//             CASE WHEN sp.stock_qty >= ? THEN 100 ELSE 0 END +
-//             CASE 
-//               WHEN REGEXP_REPLACE(LOWER(sp.width), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '') THEN 150 
-//               WHEN sp.width REGEXP CONCAT('(^|[^0-9.])', REGEXP_REPLACE(?, '[^0-9.]', ''), '([^0-9.]|$)') THEN 150
-//               WHEN sp.width IS NULL OR LOWER(sp.width) REGEXP 'all|custom|any|none' THEN 100
-//               ELSE 0 
-//             END +
-//             CASE 
-//               WHEN EXISTS (SELECT 1 FROM products p3 WHERE p3.id = sp.product_id AND (
-//                 REGEXP_REPLACE(LOWER(p3.thickness), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '') OR 
-//                 p3.thickness REGEXP CONCAT('(^|[^0-9.])', REGEXP_REPLACE(?, '[^0-9.]', ''), '([^0-9.]|$)')
-//               )) THEN 150 
-//               WHEN EXISTS (SELECT 1 FROM products p3 WHERE p3.id = sp.product_id AND (p3.thickness IS NULL OR LOWER(p3.thickness) REGEXP 'all|custom|any|none')) THEN 100
-//               ELSE 0 
-//             END
-//           )
-//           FROM seller_products sp
-//           JOIN products p_check ON sp.product_id = p_check.id
-//           JOIN sub_categories sc_check ON p_check.sub_category_id = sc_check.id
-//           WHERE sp.seller_id = s.id AND sp.status = 'active' AND sc_check.category_id = ?
-//         ), 0) as product_score,
-
-//         (s.pincode = ?) as pincode_match,
-//         (LOWER(s.city) = LOWER(?) OR LOWER(?) LIKE CONCAT('%', LOWER(s.city), '%')) as city_match,
-//         (LOWER(s.state) = LOWER(?) OR LOWER(?) LIKE CONCAT('%', LOWER(s.state), '%')) as state_match,
-//         EXISTS (SELECT 1 FROM seller_products sp2 JOIN products p2 ON sp2.product_id = p2.id JOIN sub_categories sc2 ON p2.sub_category_id = sc2.id WHERE sp2.seller_id = s.id AND sc2.category_id = ? AND sp2.stock_qty >= ? ) as has_stock,
-//         EXISTS (SELECT 1 FROM seller_products sp3 JOIN products p3 ON sp3.product_id = p3.id JOIN sub_categories sc3 ON p3.sub_category_id = sc3.id WHERE sp3.seller_id = s.id AND sc3.category_id = ? AND sp3.moq <= ? ) as moq_fit,
-//         EXISTS (SELECT 1 FROM seller_products sp4 JOIN products p4 ON sp4.product_id = p4.id JOIN sub_categories sc4 ON p4.sub_category_id = sc4.id WHERE sp4.seller_id = s.id AND sc4.category_id = ? AND sp4.price_min <= (SELECT COALESCE(AVG(price_min), sp4.price_min) FROM seller_products WHERE product_id = sp4.product_id) ) as price_match,
-//         (SELECT MIN(delivery_hours) FROM seller_products sp5 JOIN products p5 ON sp5.product_id = p5.id JOIN sub_categories sc5 ON p5.sub_category_id = sc5.id WHERE sp5.seller_id = s.id AND sp5.status = 'active' AND sc5.category_id = ?) as best_delivery_hours,
-//         (SELECT MIN(price_min) FROM seller_products sp_p JOIN products p_p ON sp_p.product_id = p_p.id JOIN sub_categories sc_p ON p_p.sub_category_id = sc_p.id WHERE sp_p.seller_id = s.id AND sp_p.status = 'active' AND sc_p.category_id = ?) as best_price,
-//         EXISTS (SELECT 1 FROM seller_products sp6 JOIN products p6 ON sp6.product_id = p6.id JOIN sub_categories sc6 ON p6.sub_category_id = sc6.id WHERE sp6.seller_id = s.id AND sc6.category_id = ?) as category_match,
-//         EXISTS (SELECT 1 FROM lead_assignments la WHERE la.seller_id = s.id AND la.inquiry_id = ?) as is_assigned
-//         FROM sellers s
-//         JOIN users u ON s.user_id = u.id
-//         LEFT JOIN pincodes_geo pg ON s.pincode = pg.pincode
-//         WHERE u.role = 'seller' AND u.is_verified = 1
-//           AND EXISTS (
-//             SELECT 1 FROM seller_products sp_filter 
-//             JOIN products p_filter ON sp_filter.product_id = p_filter.id
-//             JOIN sub_categories sc_filter ON p_filter.sub_category_id = sc_filter.id
-//             WHERE sp_filter.seller_id = s.id 
-//               AND sp_filter.status = 'active'
-//               AND sc_filter.category_id = ? 
-//               AND (
-//                 -- Flexible Match: Product Type or Name contains the lead's type/name
-//                 (p_filter.product_type LIKE CONCAT('%', ?, '%') OR ? LIKE CONCAT('%', p_filter.product_type, '%') OR p_filter.name LIKE CONCAT('%', ?, '%'))
-//                 AND (
-//                   (REGEXP_REPLACE(LOWER(sp_filter.width), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '') OR sp_filter.width REGEXP CONCAT('(^|[^0-9.])', REGEXP_REPLACE(?, '[^0-9.]', ''), '([^0-9.]|$)') OR LOWER(sp_filter.width) REGEXP 'all|any|custom|none' OR sp_filter.width IS NULL)
-//                   AND 
-//                   (REGEXP_REPLACE(LOWER(p_filter.thickness), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '') OR p_filter.thickness REGEXP CONCAT('(^|[^0-9.])', REGEXP_REPLACE(?, '[^0-9.]', ''), '([^0-9.]|$)') OR LOWER(p_filter.thickness) REGEXP 'all|any|custom|none' OR p_filter.thickness IS NULL)
-//                 )
-//               )
-//               AND sp_filter.stock_qty >= ? 
-//               AND sp_filter.moq <= ? 
-//           )
-//       ) as t
-//       ORDER BY (CASE WHEN distance_km IS NULL THEN 1 ELSE 0 END) ASC, distance_km ASC, product_score DESC, best_price ASC
-//     `;
-
-//     const [sellers] = await pool.query(query, [
-//       bLat, bLng, bLat, // distance_km
-      
-//       // location_score
-//       bLat, bLng, bLat, bLat, bLng, bLat, bLat, bLng, bLat, bLat, bLng, bLat,
-//       lead.pincode, lead.city, lead.address, lead.state, lead.address, lead.state, lead.state,
-
-//       // product_score
-//       leadQty, leadWidth, leadWidth, leadThickness, leadThickness, lead.category_id,
-
-//       // matches checks
-//       lead.pincode, lead.city, lead.address, lead.state, lead.address,
-//       lead.category_id, leadQty, 
-//       lead.category_id, leadQty, 
-//       lead.category_id, 
-//       lead.category_id, 
-//       lead.category_id, lead.category_id, lead.id,
-
-//       // WHERE clause filters (Mandatory)
-//       lead.category_id, // category match
-//       lead.product_type || 'NA', lead.product_type || 'NA', lead.product_type || 'NA', // type match
-//       leadWidth, leadWidth, // width match
-//       leadThickness, leadThickness, // thickness match
-//       leadQty > 0 ? leadQty : 0, // stock
-//       leadQty > 0 ? leadQty : 999999  // moq
-//     ]);
-
-//     // 2.1 Fetch Real Road Metrics for top 5 sellers (Only if coordinates exist)
-//     const enrichedSellers = await Promise.all(sellers.map(async (seller, idx) => {
-//       // Use idx < 5 to limit API calls (saves cost/latency)
-//       if (idx < 5 && bLat && bLng && seller.seller_lat && seller.seller_lng) {
-//         const roadMetrics = await getRoadMetrics(bLat, bLng, seller.seller_lat, seller.seller_lng);
-//         if (roadMetrics) {
-//           return { ...seller, ...roadMetrics };
-//         }
-//       }
-//       return seller;
-//     }));
-
-//     res.status(200).json({ 
-//       success: true, 
-//       recommendations: enrichedSellers,
-//       leadLocation: { city: lead.city, state: lead.state },
-//       leadRequirements: { qty: leadQty, thickness: leadThickness, width: leadWidth }
-//     });
-//   } catch (error) {
-//     console.error("Error in getRecommendedSellers:", error);
-//     res.status(500).json({ success: false, message: "Server Error" });
-//   }
-// };
 
 // 17. Get Recommended Sellers for a lead (Phase 2 - Smart Matching)
 export const getRecommendedSellers = async (req, res) => {
@@ -1097,7 +932,7 @@ export const getRecommendedSellers = async (req, res) => {
               -- Stock availability (Max 100)
               CASE WHEN sp.stock_qty >= ?         THEN 100 ELSE 0 END +
               -- MOQ Fit / Capacity Bonus (Max 100)
-              CASE WHEN sp.moq >= ?               THEN 100 ELSE 0 END +
+              CASE WHEN sp.moq <= ?               THEN 100 ELSE 0 END +
               -- Width match (Max 150)
               CASE
                 WHEN REGEXP_REPLACE(LOWER(sp.width), '[^0-9.]', '') = REGEXP_REPLACE(LOWER(?), '[^0-9.]', '')  THEN 150
@@ -1148,7 +983,7 @@ export const getRecommendedSellers = async (req, res) => {
           EXISTS (
             SELECT 1 FROM seller_products sp3
             JOIN products p3         ON sp3.product_id        = p3.id
-            WHERE sp3.seller_id = s.id AND p3.name = (SELECT name FROM products WHERE id = ?) AND sp3.moq >= ?
+            WHERE sp3.seller_id = s.id AND p3.name = (SELECT name FROM products WHERE id = ?) AND sp3.moq <= ?
           ) as moq_fit,
 
           EXISTS (
@@ -1237,7 +1072,7 @@ export const getRecommendedSellers = async (req, res) => {
         (CASE WHEN distance_km IS NULL THEN 1 ELSE 0 END) ASC,
         (
           location_score * 0.40
-          + product_score * 0.40
+          + (CASE WHEN is_hard_match = 1 THEN product_score ELSE 0 END) * 0.40
           + (CASE
                WHEN best_delivery_hours <= 24 THEN 150
                WHEN best_delivery_hours <= 48 THEN 100
@@ -1325,18 +1160,24 @@ export const getRecommendedSellers = async (req, res) => {
           seller.best_delivery_hours <= 48 ? 100 :
           seller.best_delivery_hours <= 72 ?  50 : 0;
 
+        const adjusted_product_score = seller.is_hard_match === 1 ? seller.product_score : 0;
+        
         seller.total_score = Math.round(
           seller.location_score * 0.40 +
-          seller.product_score  * 0.40 +
+          adjusted_product_score * 0.40 +
           deliveryBonus         * 0.20
         );
 
-        // Human-readable match tag for frontend badge
-        if (seller.total_score >= 300)       seller.match_tag = "Best Match";
-        else if (seller.distance_km < 50)    seller.match_tag = "Nearest";
-        else if (seller.price_match)         seller.match_tag = "Best Price";
-        else if (seller.best_delivery_hours <= 24) seller.match_tag = "Fast Delivery";
-        else                                 seller.match_tag = null;
+        if (seller.is_hard_match !== 1) {
+          seller.match_tag = "Mismatched";
+        } else {
+          // Human-readable match tag for frontend badge
+          if (seller.total_score >= 300)       seller.match_tag = "Best Match";
+          else if (seller.distance_km < 50)    seller.match_tag = "Nearest";
+          else if (seller.price_match)         seller.match_tag = "Best Price";
+          else if (seller.best_delivery_hours <= 24) seller.match_tag = "Fast Delivery";
+          else                                 seller.match_tag = null;
+        }
 
         return seller;
       })
@@ -1803,7 +1644,8 @@ export const exportDataAdmin = async (req, res) => {
                p.is_trending as Trending, p.is_hot_deal as HotDeal,
                COALESCE(NULLIF(p.delivery_time, ''), CONCAT(sp.delivery_hours, ' Hours')) as DeliveryTime, 
                s.id as SellerID, s.company_name as SellerName,
-               p.applications as Applications
+               p.applications as Applications,
+               p.description as Description
         FROM products p
         JOIN sub_categories sc ON p.sub_category_id = sc.id
         JOIN categories c ON sc.category_id = c.id
@@ -1927,15 +1769,19 @@ export const bulkUploadProducts = async (req, res) => {
         const subCatId = await resolveEntityId(connection, 'sub_categories', 'name', SubCategory, 'category_id', catId);
         const tagId = await resolveEntityId(connection, 'tags', 'tag_name', Tag);
 
-        // Find matched image
+        // Find matched image — supports URL or uploaded filename
         let finalImageUrl = null;
-        if (ImageName) {
-          const matchedImg = imageFiles.find(f => f.originalname === ImageName.trim());
-          if (matchedImg) {
-            // Move/Rename is handled by multer to product_images? 
-            // Usually multer saves to a temp or specific dir. 
-            // We need to ensure it's in the PUBLIC path.
-            finalImageUrl = `/uploads/product_images/${matchedImg.filename}`;
+        if (ImageName && ImageName.trim()) {
+          const imgVal = ImageName.trim();
+          // If it's a URL (starts with http/https or /), use it directly
+          if (imgVal.startsWith('http://') || imgVal.startsWith('https://') || imgVal.startsWith('/')) {
+            finalImageUrl = imgVal;
+          } else {
+            // Match against uploaded image files by original filename
+            const matchedImg = imageFiles.find(f => f.originalname === imgVal);
+            if (matchedImg) {
+              finalImageUrl = `/uploads/product_images/${matchedImg.filename}`;
+            }
           }
         }
 

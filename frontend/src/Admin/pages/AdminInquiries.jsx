@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   TrendingUp, 
   Search, 
@@ -45,14 +45,25 @@ export default function AdminInquiries() {
   const productNames = [...new Set(inquiries.map(i => i.product_name))].filter(Boolean);
   const sellerNames = [...new Set(inquiries.map(i => i.seller_name))].filter(Boolean);
 
+  const debounceRef = useRef(null);
+
   useEffect(() => {
-    loadInquiries(1);
+    loadInquiries(1, search);
   }, []);
 
-  const loadInquiries = async (page) => {
+  // Debounced search — fires API call 400ms after user stops typing
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      loadInquiries(1, search);
+    }, 400);
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
+
+  const loadInquiries = async (page, searchTerm = search) => {
     setLoading(true);
     try {
-      const res = await fetchInquiriesAdmin(page);
+      const res = await fetchInquiriesAdmin(page, 10, searchTerm);
       if (res.success) {
         setInquiries(res.inquiries);
         setTotalPages(res.totalPages || 1);
@@ -65,19 +76,12 @@ export default function AdminInquiries() {
     }
   };
 
+  // Client-side filters (status, product, seller) applied on top of server search results
   const filteredInquiries = inquiries.filter((item) => {
-    const s = search.toLowerCase();
-    const matchesSearch = (
-      item.buyer_display_name?.toLowerCase().includes(s) ||
-      item.product_name?.toLowerCase().includes(s) ||
-      item.seller_name?.toLowerCase().includes(s)
-    );
-
     const matchesStatus = !filters.status || item.status === filters.status;
     const matchesProduct = !filters.product || item.product_name === filters.product;
     const matchesSeller = !filters.seller || item.seller_name === filters.seller;
-
-    return matchesSearch && matchesStatus && matchesProduct && matchesSeller;
+    return matchesStatus && matchesProduct && matchesSeller;
   });
 
   const handleStatusClick = async (inquiry, newStatus) => {
@@ -512,7 +516,7 @@ export default function AdminInquiries() {
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
-            onPageChange={(page) => loadInquiries(page)}
+            onPageChange={(page) => loadInquiries(page, search)}
           />
         </div>
       )}

@@ -98,8 +98,10 @@ export const fetchSellersWithOrdersAdmin = async (page = 1, limit = 10) => {
 };
 
 // --- Lead Management (Inquiries) ---
-export const fetchInquiriesAdmin = async (page = 1, limit = 10) => {
-  const response = await API.get(`/admin/inquiries?page=${page}&limit=${limit}`);
+export const fetchInquiriesAdmin = async (page = 1, limit = 10, search = '') => {
+  let url = `/admin/inquiries?page=${page}&limit=${limit}`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
+  const response = await API.get(url);
   return response.data;
 };
 

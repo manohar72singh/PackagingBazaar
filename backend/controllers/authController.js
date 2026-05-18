@@ -150,10 +150,9 @@ export const registerSeller = async (req, res) => {
 
     await connection.commit();
 
-    // 4. Pre-fetch and cache Seller Coordinates for Distance Matching (Force Refresh to keep DB Current)
+    // 4. Pre-fetch and cache Seller Coordinates (Awaited to ensure distance logic works immediately)
     if (pincode) {
-      // We run this in the background (no await) to keep registration fast
-      getCoordinates(pincode, true).catch(err => console.error("Error updating seller coordinates:", err));
+      await getCoordinates(pincode).catch(err => console.error("Error updating seller coordinates:", err));
     }
 
     // --- EMAIL & IN-APP NOTIFICATIONS ---

@@ -58,23 +58,55 @@ export const submitInquiry = async (req, res) => {
 
         const [result] = await pool.query(query, values);
         
-        // Background update of coordinates for distance matching accuracy
+        // Ensure coordinates exist for accurate distance matching
         if (pincode) {
-            getCoordinates(pincode, true).catch(err => console.error("Error updating lead coordinates:", err));
+            await getCoordinates(pincode).catch(err => console.error("Error updating lead coordinates:", err));
         }
 
         // Notify Admin
         try {
-            const [adminRows] = await pool.query("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
+            const newLeadId = result.insertId;
+            const [adminRows] = await pool.query("SELECT id, email FROM users WHERE role = 'admin' LIMIT 1");
             if (adminRows.length > 0) {
+                const admin = adminRows[0];
+
+                // Platform notification
                 await sendNotification({
-                    userId: adminRows[0].id,
+                    userId: admin.id,
                     userRole: 'admin',
                     title: 'New Bulk Inquiry Received',
-                    message: `New requirement received for product ID: ${product_id} from ${buyer_name || 'a Buyer'}.`,
+                    message: `New lead PB-LID-${newLeadId} received from ${buyer_name || 'a Buyer'} for ${buyer_name || 'product'}.`,
                     type: 'lead',
                     link: '/admin/inquiries'
                 });
+
+                // Email notification to admin
+                if (admin.email) {
+                    const [pName] = await pool.query("SELECT name FROM products WHERE id = ? LIMIT 1", [product_id]);
+                    const productName = pName[0]?.name || `Product #${product_id}`;
+                    const emailSubject = `[New Lead] PB-LID-${newLeadId}: ${productName} Inquiry`;
+                    const emailHtml = `
+                        <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; border: 1px solid #eee; border-radius: 12px;">
+                            <h2 style="color: #e8511a; margin-top: 0;">🔔 New Lead Received</h2>
+                            <p>Hello Admin,</p>
+                            <p>A new buyer inquiry has been submitted on PackagingBazaar. Please review and assign it to a suitable seller.</p>
+                            <div style="background: #f9fafb; padding: 20px; border-radius: 10px; border-left: 5px solid #e8511a; margin: 20px 0;">
+                                <p style="margin: 5px 0;"><strong>Lead ID:</strong> PB-LID-${newLeadId}</p>
+                                <p style="margin: 5px 0;"><strong>Product:</strong> ${productName}</p>
+                                <p style="margin: 5px 0;"><strong>Buyer Name:</strong> ${buyer_name || 'N/A'}</p>
+                                <p style="margin: 5px 0;"><strong>Quantity:</strong> ${quantity || 'Not specified'}</p>
+                                ${thickness ? `<p style="margin: 5px 0;"><strong>Thickness:</strong> ${thickness} Micron</p>` : ''}
+                                ${width ? `<p style="margin: 5px 0;"><strong>Width:</strong> ${width}</p>` : ''}
+                                <p style="margin: 5px 0;"><strong>Location:</strong> ${city || ''}, ${state || ''} - ${pincode || ''}</p>
+                                ${message ? `<p style="margin: 10px 0 0 0; font-style: italic; color: #666;"><strong>Message:</strong> ${message}</p>` : ''}
+                            </div>
+                            <div style="text-align: center; margin-top: 30px;">
+                                <a href="https://packagingbazaar.co.in/admin/inquiries" style="display: inline-block; background: #e8511a; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px;">Review Lead on Dashboard</a>
+                            </div>
+                        </div>
+                    `;
+                    await sendEmail(admin.email, emailSubject, "", emailHtml);
+                }
             }
         } catch (notifErr) {
             console.error("Notification Error:", notifErr);

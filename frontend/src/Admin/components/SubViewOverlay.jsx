@@ -49,6 +49,7 @@ export default function SubViewOverlay({ entity, onClose }) {
       ``,
       `A buyer is looking for a product matching your profile:`,
       ``,
+      `🆔 *Lead ID:* PB-LID-${entity.id}`,
       `📦 *Product:* ${inquiry.product_name}`,
       inquiry.quantity_required ? `📊 *Quantity Required:* ${inquiry.quantity_required}` : null,
       inquiry.thickness        ? `📏 *Thickness (Micron):* ${inquiry.thickness}` : null,
@@ -180,49 +181,82 @@ export default function SubViewOverlay({ entity, onClose }) {
       <div className="relative bg-white rounded-[3rem] w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl">
 
         {/* ── Header ── */}
-        <div className="p-8 border-b flex items-center justify-between bg-gray-50/50">
-          <div>
-            <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tighter">
-              {entity.name}
-            </h2>
-            {entity.mode === "lead-matching" && (
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
-                Smart Algorithm Ranking
-              </p>
-            )}
-          </div>
+        <div className="border-b bg-gray-50/50">
+          {/* Top row: Title + Actions */}
+          <div className="px-8 pt-7 pb-4 flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tighter leading-tight">
+                {entity.name}
+              </h2>
+              {entity.mode === "lead-matching" && (
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
+                  Smart Algorithm Ranking
+                </p>
+              )}
+            </div>
 
-          <div className="flex items-center gap-4">
-            {entity.mode === "lead-matching" && (
-              <>
-                <button
-                  onClick={handleExportAnalysis}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-100 rounded-xl text-[10px] font-black uppercase text-gray-600 hover:bg-gray-50 transition-all shadow-sm"
-                >
-                  <IndianRupee size={14} className="text-green-600" />
-                  Export Analysis
-                </button>
-
-                <div className="flex items-center gap-2 bg-white border border-gray-100 p-1 rounded-xl shadow-sm">
-                  <div className="pl-3 pr-1 text-gray-400"><ArrowUpDown size={14} /></div>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    className="bg-transparent border-none text-[10px] font-black uppercase text-gray-600 outline-none py-1.5 pr-4 cursor-pointer"
+            <div className="flex items-center gap-3 shrink-0">
+              {entity.mode === "lead-matching" && (
+                <>
+                  <button
+                    onClick={handleExportAnalysis}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-100 rounded-xl text-[10px] font-black uppercase text-gray-600 hover:bg-gray-50 transition-all shadow-sm"
                   >
-                    <option value="match">Best Match</option>
-                    <option value="dispatch">Fastest Dispatch</option>
-                    <option value="price">Lowest Price</option>
-                    <option value="moq">Best Match MOQ</option>
-                    <option value="distance">Nearest</option>
-                  </select>
-                </div>
-              </>
-            )}
-            <button onClick={onClose} className="p-3 bg-white border rounded-2xl hover:bg-gray-100 transition-all">
-              <XCircle />
-            </button>
+                    <IndianRupee size={14} className="text-green-600" />
+                    Export
+                  </button>
+
+                  <div className="flex items-center gap-2 bg-white border border-gray-100 p-1 rounded-xl shadow-sm">
+                    <div className="pl-3 pr-1 text-gray-400"><ArrowUpDown size={14} /></div>
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="bg-transparent border-none text-[10px] font-black uppercase text-gray-600 outline-none py-1.5 pr-4 cursor-pointer"
+                    >
+                      <option value="match">Best Match</option>
+                      <option value="dispatch">Fastest Dispatch</option>
+                      <option value="price">Lowest Price</option>
+                      <option value="moq">Best MOQ</option>
+                      <option value="distance">Nearest</option>
+                    </select>
+                  </div>
+                </>
+              )}
+              <button onClick={onClose} className="p-3 bg-white border rounded-2xl hover:bg-gray-100 transition-all">
+                <XCircle />
+              </button>
+            </div>
           </div>
+
+          {/* Lead requirement info strip */}
+          {entity.mode === "lead-matching" && entity.inquiryData && (
+            <div className="px-8 pb-5 flex flex-wrap items-center gap-2">
+              <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest mr-1">Requirement:</span>
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-accent bg-accent/10 border border-accent/20 px-2.5 py-1 rounded-full">
+                <Package size={10} /> {entity.inquiryData.product_name}
+              </span>
+              {entity.inquiryData.quantity_required && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-gray-600 bg-white border border-gray-200 px-2.5 py-1 rounded-full">
+                  Qty: <strong>{entity.inquiryData.quantity_required}</strong>
+                </span>
+              )}
+              {entity.inquiryData.thickness && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-gray-600 bg-white border border-gray-200 px-2.5 py-1 rounded-full">
+                  Thickness: <strong>{entity.inquiryData.thickness} Micron</strong>
+                </span>
+              )}
+              {entity.inquiryData.width && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-gray-600 bg-white border border-gray-200 px-2.5 py-1 rounded-full">
+                  Width: <strong>{entity.inquiryData.width}</strong>
+                </span>
+              )}
+              {entity.inquiryData.product_type && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-gray-600 bg-white border border-gray-200 px-2.5 py-1 rounded-full">
+                  Type: <strong>{entity.inquiryData.product_type}</strong>
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── Body ── */}
@@ -355,7 +389,11 @@ export default function SubViewOverlay({ entity, onClose }) {
                               <Zap size={12} className="text-amber-500" /> Dispatch: {seller.best_delivery_hours} Hrs
                             </span>
                           )}
-                          {!seller.moq_fit && (
+                          {seller.moq_fit ? (
+                            <span className="flex items-center gap-1.5 px-3 py-1 bg-green-50 text-green-600 border border-green-100 rounded-lg">
+                              <CheckCircle2 size={12} /> MOQ Satisfied
+                            </span>
+                          ) : (
                             <span className="flex items-center gap-1.5 px-3 py-1 bg-orange-50 text-orange-600 border border-orange-100 rounded-lg animate-pulse">
                               <AlertTriangle size={12} /> Low Capacity / MOQ
                             </span>
@@ -377,7 +415,9 @@ export default function SubViewOverlay({ entity, onClose }) {
                                   <Navigation size={12} />
                                   {seller.road_distance_km
                                     ? `${seller.road_distance_km} km (Road)`
-                                    : `${parseFloat(seller.distance_km).toFixed(1)} km (Aerial)`}
+                                    : (seller.distance_km && !isNaN(parseFloat(seller.distance_km)))
+                                      ? `${parseFloat(seller.distance_km).toFixed(1)} km (Aerial)`
+                                      : 'N/A'}
                                 </div>
                                 {seller.duration_min && (
                                   <div className="bg-green-50 text-green-600 px-3 py-1 rounded-xl text-[10px] font-black flex items-center gap-1.5 border border-green-100">
