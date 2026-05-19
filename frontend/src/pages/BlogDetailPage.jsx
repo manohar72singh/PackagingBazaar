@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { fetchBlogBySlug } from "../services/blogServices";
 import { getImageUrl } from "../services/api";
-import { Calendar, Clock, ArrowLeft, User, Tag, Loader2 } from "lucide-react";
+import { Calendar, Clock, ArrowLeft, User, Tag, Loader2, Share2, Copy, Check } from "lucide-react";
 
 const PLACEHOLDER =
   "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=1200&auto=format&fit=crop&q=80";
@@ -12,6 +12,7 @@ export default function BlogDetailPage() {
   const [blog, setBlog] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetchBlogBySlug(slug)
@@ -22,6 +23,98 @@ export default function BlogDetailPage() {
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
   }, [slug]);
+
+  useEffect(() => {
+    if (!blog) return;
+
+    const originalTitle = document.title;
+    
+    // Helper to get or create a meta tag
+    const setMetaTag = (attributeName, attributeValue, content) => {
+      let element = document.querySelector(`meta[${attributeName}="${attributeValue}"]`);
+      if (!element) {
+        element = document.createElement("meta");
+        element.setAttribute(attributeName, attributeValue);
+        document.head.appendChild(element);
+      }
+      element.setAttribute("content", content || "");
+      return element;
+    };
+
+    // Determine values with fallback
+    const titleVal = blog.meta_title || `${blog.title} | PackagingBazaar`;
+    const descVal = blog.meta_description || blog.excerpt || blog.title;
+    const keywordsVal = blog.meta_keywords || blog.tags || "packaging, packagingbazaar, blog";
+    const imgVal = blog.cover_image ? getImageUrl(blog.cover_image) : PLACEHOLDER;
+
+    // Apply Meta Tags
+    document.title = titleVal;
+    setMetaTag("name", "description", descVal);
+    setMetaTag("name", "keywords", keywordsVal);
+
+    // Open Graph Tags
+    setMetaTag("property", "og:title", titleVal);
+    setMetaTag("property", "og:description", descVal);
+    setMetaTag("property", "og:image", imgVal);
+    setMetaTag("property", "og:url", window.location.href);
+    setMetaTag("property", "og:type", "article");
+
+    // Twitter Card Tags
+    setMetaTag("name", "twitter:card", "summary_large_image");
+    setMetaTag("name", "twitter:title", titleVal);
+    setMetaTag("name", "twitter:description", descVal);
+    setMetaTag("name", "twitter:image", imgVal);
+
+    // Inject JSON-LD Schema
+    const scriptId = "blog-schema-markup";
+    let scriptTag = document.getElementById(scriptId);
+    if (!scriptTag) {
+      scriptTag = document.createElement("script");
+      scriptTag.id = scriptId;
+      scriptTag.type = "application/ld+json";
+      document.head.appendChild(scriptTag);
+    }
+    scriptTag.text = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      "headline": blog.title,
+      "image": [imgVal],
+      "datePublished": blog.created_at,
+      "dateModified": blog.updated_at || blog.created_at,
+      "author": {
+        "@type": "Person",
+        "name": blog.author || "PackagingBazaar Team"
+      },
+      "description": blog.excerpt || blog.title,
+      "publisher": {
+        "@type": "Organization",
+        "name": "PackagingBazaar",
+        "logo": {
+          "@type": "ImageObject",
+          "url": `${window.location.origin}/logo.png`
+        }
+      }
+    });
+
+    // Cleanup on unmount
+    return () => {
+      document.title = originalTitle;
+      
+      // Revert standard meta fallbacks
+      document.querySelector('meta[name="description"]')?.setAttribute(
+        "content", 
+        "PackagingBazaar is the leading marketplace for verified packaging manufacturers, suppliers, and custom box listings."
+      );
+      document.querySelector('meta[name="keywords"]')?.setAttribute(
+        "content", 
+        "packaging, B2B, boxes, custom packaging"
+      );
+
+      // Remove Schema Tag
+      const addedScript = document.getElementById(scriptId);
+      if (addedScript) addedScript.remove();
+    };
+  }, [blog]);
 
   if (loading) {
     return (
@@ -42,6 +135,12 @@ export default function BlogDetailPage() {
       </div>
     );
   }
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const d = new Date(blog.created_at);
   const date = d.toLocaleDateString("en-IN", {
@@ -114,6 +213,55 @@ export default function BlogDetailPage() {
           }}
           dangerouslySetInnerHTML={{ __html: blog.content }}
         />
+
+        {/* Social Share Bar */}
+        <div className="mt-12 pt-8 border-t border-black/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h4 className="font-syne font-black text-sm uppercase tracking-wider text-ink">Share This Article</h4>
+            <p className="text-[10px] text-ink3 font-bold uppercase tracking-widest mt-0.5">Spread the knowledge with your professional network</p>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-2">
+            {/* WhatsApp */}
+            <a
+              href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`${blog.title} - Read more at: ` + window.location.href)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 bg-[#25D366] hover:bg-[#20ba59] text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-[#25D366]/10"
+            >
+              WhatsApp
+            </a>
+            
+            {/* LinkedIn */}
+            <a
+              href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(window.location.href)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 bg-[#0077B5] hover:bg-[#00669c] text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-[#0077B5]/10"
+            >
+              LinkedIn
+            </a>
+
+            {/* Twitter / X */}
+            <a
+              href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(blog.title)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 bg-black hover:bg-neutral-900 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md"
+            >
+              Twitter
+            </a>
+
+            {/* Copy Link */}
+            <button
+              onClick={handleCopyLink}
+              className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-ink px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all border border-black/[0.04] cursor-pointer"
+            >
+              {copied ? <Check size={12} className="text-green-600 animate-pulse" /> : <Copy size={12} />}
+              {copied ? "Copied!" : "Copy Link"}
+            </button>
+          </div>
+        </div>
       </article>
 
       {/* Back CTA */}

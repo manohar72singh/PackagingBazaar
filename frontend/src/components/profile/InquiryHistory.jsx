@@ -1,18 +1,76 @@
 import { useState, useEffect } from "react";
-import { Package, Ruler, Calendar, MapPin, MessageSquare, Clock, ArrowUpRight, ShieldCheck, AlertCircle, ShoppingBag, MessageCircle } from "lucide-react";
+import { Package, Ruler, Calendar, MapPin, MessageSquare, Clock, ArrowUpRight, ShieldCheck, AlertCircle, ShoppingBag, MessageCircle, Phone, Mail, Star, ChevronDown, ChevronUp } from "lucide-react";
 import { fetchBuyerInquiriesAPI } from "../../services/inquiryServices";
+import { addManualReview } from "../../services/reviewServices";
 import { useNotification } from "../../context/NotificationContext";
 import { Link, useNavigate } from "react-router-dom";
 import { getImageUrl } from "../../services/api";
 
+const getDurationString = (start, end) => {
+  if (!start || !end) return null;
+  const sDate = new Date(start);
+  const eDate = new Date(end);
+  const diffMs = eDate - sDate;
+  if (diffMs < 0) return null;
+  
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 60) return `${diffMins} Min${diffMins > 1 ? 's' : ''}`;
+  
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours} Hr${diffHours > 1 ? 's' : ''}`;
+  
+  const diffDays = Math.round((diffHours / 24) * 10) / 10;
+  return `${diffDays} Day${diffDays !== 1 ? 's' : ''}`;
+};
+
 export default function InquiryHistory() {
   const [inquiries, setInquiries] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { notifyError } = useNotification();
+  const { notifyError, notifySuccess } = useNotification();
   const [activeFilter, setActiveFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const navigate = useNavigate();
   const itemsPerPage = 3;
+  const [expandedCards, setExpandedCards] = useState({});
+
+  const toggleCard = (id) => {
+    setExpandedCards(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // Review Modal States
+  const [reviewModal, setReviewModal] = useState({ open: false, product_id: null, product_name: "" });
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+
+  const handleSubmitReview = async () => {
+    if (reviewRating < 1 || reviewRating > 5) {
+      return notifyError("Please select a rating between 1 and 5 stars.");
+    }
+    
+    setSubmittingReview(true);
+    try {
+      const res = await addManualReview({
+        product_id: reviewModal.product_id,
+        rating: reviewRating,
+        comment: reviewComment
+      });
+
+      if (res.success) {
+        notifySuccess("Review submitted successfully! It is now live.");
+        setInquiries(prev => prev.map(inq => 
+          inq.product_id === reviewModal.product_id ? { ...inq, is_reviewed: 1 } : inq
+        ));
+        setReviewModal({ open: false, product_id: null, product_name: "" });
+        setReviewComment("");
+        setReviewRating(5);
+      }
+    } catch (err) {
+      notifyError(err.response?.data?.message || "Failed to submit review. Please try again.");
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
 
   useEffect(() => {
     loadInquiries();
@@ -39,7 +97,7 @@ export default function InquiryHistory() {
     if (activeFilter === "all") return true;
     if (activeFilter === "pending") return inq.status?.toLowerCase() === "pending";
     if (activeFilter === "assigned") return inq.status?.toLowerCase() === "assigned" || inq.status?.toLowerCase() === "shared";
-    if (activeFilter === "closed") return inq.status?.toLowerCase() === "deal closed" || inq.status?.toLowerCase() === "fulfilled" || inq.status?.toLowerCase() === "won";
+    if (activeFilter === "closed") return inq.status?.toLowerCase() === "closed" || inq.status?.toLowerCase() === "deal closed" || inq.status?.toLowerCase() === "fulfilled" || inq.status?.toLowerCase() === "won";
     return true;
   });
 
@@ -64,6 +122,7 @@ export default function InquiryHistory() {
           dot: "bg-indigo-500",
           icon: <ShieldCheck size={12} className="text-indigo-500" />
         };
+      case "closed":
       case "deal closed":
       case "fulfilled":
       case "won":
@@ -142,6 +201,29 @@ export default function InquiryHistory() {
 
   return (
     <div className="space-y-6">
+      <style>{`
+        @keyframes dynamicReveal {
+          0% {
+            opacity: 0;
+            transform: translateY(-20px) scale(0.95);
+            filter: blur(4px);
+          }
+          75% {
+            opacity: 0.95;
+            transform: translateY(2px) scale(1.008);
+            filter: blur(0px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            filter: blur(0px);
+          }
+        }
+        .animate-slideDown {
+          animation: dynamicReveal 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+          transform-origin: top center;
+        }
+      `}</style>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h3 className="font-syne font-black text-gray-900 text-lg uppercase">My Submitted Requirements</h3>
@@ -158,7 +240,7 @@ export default function InquiryHistory() {
           { id: "all", label: "All", count: inquiries.length },
           { id: "pending", label: "Under Review", count: inquiries.filter(i => i.status?.toLowerCase() === "pending").length },
           { id: "assigned", label: "Connecting", count: inquiries.filter(i => i.status?.toLowerCase() === "assigned" || i.status?.toLowerCase() === "shared").length },
-          { id: "closed", label: "Closed", count: inquiries.filter(i => i.status?.toLowerCase() === "deal closed" || i.status?.toLowerCase() === "fulfilled" || i.status?.toLowerCase() === "won").length }
+          { id: "closed", label: "Closed", count: inquiries.filter(i => i.status?.toLowerCase() === "closed" || i.status?.toLowerCase() === "deal closed" || i.status?.toLowerCase() === "fulfilled" || i.status?.toLowerCase() === "won").length }
         ].map((tab) => (
           <button
             key={tab.id}
@@ -243,31 +325,50 @@ export default function InquiryHistory() {
                   </div>
                 </div>
 
-                {/* Visual Progress Stepper */}
-                <div className="py-2 flex items-center justify-between text-[7px] font-black uppercase tracking-wider text-gray-400 select-none border-b border-gray-50 bg-gray-50/20 px-3.5 -mx-3.5">
-                  {getStatusSteps(inq.status).map((step, idx, arr) => (
-                    <div key={step.label} className="flex-1 flex items-center">
-                      <div className="flex items-center gap-1 shrink-0">
-                        <div className={`w-2.5 h-2.5 rounded-full flex items-center justify-center text-[5px] font-black border transition-all ${
-                          step.active ? "bg-accent border-accent text-white" : "bg-gray-50 border-gray-200 text-gray-300"
-                        }`}>
-                          {step.active ? "✓" : ""}
+                {/* Visual Progress Stepper & View Details Toggle */}
+                <div className="py-2.5 flex items-center justify-between text-[7px] font-black uppercase tracking-wider text-gray-400 select-none border-b border-gray-50 bg-gray-50/20 px-3.5 -mx-3.5">
+                  {/* Left Side: Stepper */}
+                  <div className="flex-grow flex items-center justify-between mr-3 pr-3 border-r border-gray-200/60">
+                    {getStatusSteps(inq.status).map((step, idx, arr) => (
+                      <div key={step.label} className="flex-1 flex items-center">
+                        <div className="flex items-center gap-1 shrink-0">
+                          <div className={`w-2.5 h-2.5 rounded-full flex items-center justify-center text-[5px] font-black border transition-all ${
+                            step.active ? "bg-accent border-accent text-white" : "bg-gray-50 border-gray-200 text-gray-300"
+                          }`}>
+                            {step.active ? "✓" : ""}
+                          </div>
+                          <span className={step.active ? "text-accent font-black" : "text-gray-600 font-bold"}>
+                            {step.label}
+                          </span>
                         </div>
-                        <span className={step.active ? "text-accent font-black" : "text-gray-400 font-semibold"}>
-                          {step.label}
-                        </span>
+                        {idx < arr.length - 1 && (
+                          <div className={`flex-grow h-0.5 mx-2 rounded-full transition-all ${
+                            step.active && arr[idx + 1].active ? "bg-accent" : "bg-gray-100"
+                          }`} />
+                        )}
                       </div>
-                      {idx < arr.length - 1 && (
-                        <div className={`flex-grow h-0.5 mx-2 rounded-full transition-all ${
-                          step.active && arr[idx + 1].active ? "bg-accent" : "bg-gray-100"
-                        }`} />
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+
+                  {/* Right Side: Toggle Action Button */}
+                  <button
+                    onClick={() => toggleCard(inq.id)}
+                    className="shrink-0 flex items-center gap-1.5 px-2.5 py-1 bg-white hover:bg-orange-50/50 border border-gray-200 hover:border-accent hover:text-accent text-[8px] text-gray-600 font-black uppercase tracking-widest rounded-xl transition-all duration-300 shadow-sm cursor-pointer select-none hover:scale-[1.05] active:scale-[0.95]"
+                  >
+                    <span>{expandedCards[inq.id] ? "Less" : "More"}</span>
+                    <ChevronDown 
+                      size={10} 
+                      className={`stroke-[3.5] transition-transform duration-300 ease-in-out ${
+                        expandedCards[inq.id] ? "rotate-180 text-accent" : "text-gray-400"
+                      }`} 
+                    />
+                  </button>
                 </div>
 
-                {/* Grid Specifications Details */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-2.5 border-b border-gray-50 text-[11px] font-bold">
+                {expandedCards[inq.id] && (
+                  <div className="space-y-3 mt-1.5 pt-1.5 border-t border-gray-100 animate-slideDown">
+                    {/* Grid Specifications Details */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-2.5 border-b border-gray-50 text-[11px] font-bold">
                   <div>
                     <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-1">Qty Required</span>
                     <p className="text-gray-900 flex items-center gap-1.5">
@@ -312,23 +413,94 @@ export default function InquiryHistory() {
                       </p>
                     </div>
                   )}
+                </div>
+
+                  {/* Deal Closure Timeline & Delivery Speed Info */}
+                  {['closed', 'deal closed', 'fulfilled', 'won'].includes(inq.status?.toLowerCase()) && inq.closed_at && (
+                    <div className="mt-3 p-3 bg-amber-50/40 rounded-2xl border border-amber-100/50 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Calendar size={13} className="text-amber-600" />
+                        <div>
+                          <p className="text-[10px] font-black text-amber-900 uppercase tracking-wider leading-none">Deal Closed</p>
+                          <p className="text-[9px] font-bold text-amber-700/80 mt-0.5">
+                            {new Date(inq.closed_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      </div>
+                      {getDurationString(inq.created_at, inq.closed_at) && (
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100/60 border border-amber-200/50 text-amber-900 text-[8px] font-black uppercase tracking-wider rounded-xl shadow-sm">
+                          ⏱️ Delivery Time: {getDurationString(inq.created_at, inq.closed_at)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Connected/Accepted Sellers */}
+                  {inq.accepted_sellers && inq.accepted_sellers.filter(Boolean).length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <h5 className="text-[10px] font-black text-gray-900 uppercase tracking-widest mb-2.5 flex items-center gap-1.5">
+                        <span className="flex h-2 w-2 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                        </span>
+                        Connected Sellers ({inq.accepted_sellers.filter(Boolean).length})
+                      </h5>
+                      <div className="grid grid-cols-1 gap-2.5">
+                        {inq.accepted_sellers.filter(Boolean).map((sel) => (
+                          <div key={sel.seller_id} className="p-3 bg-green-50/40 rounded-2xl border border-green-100 flex items-center justify-between transition-all hover:bg-green-50">
+                            <div className="flex items-center gap-2">
+                              <h6 className="font-syne font-black text-gray-900 text-[11px] uppercase tracking-tight">
+                                {sel.company_name}
+                              </h6>
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-green-100 text-green-800 text-[8px] font-black uppercase tracking-widest rounded-md">
+                                Accepted
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* WhatsApp Support Button */}
+                  {/* WhatsApp Support & Review Buttons */}
                   <div className="pt-2.5 border-t border-gray-50 mt-1 flex items-center justify-between">
-                    <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Need instant updates?</span>
-                    <a
-                      href={`https://wa.me/919667435374?text=${encodeURIComponent(
-                        `Hello PackagingBazaar Team, I want to track my requirement PB-LID-${inq.id} (${inq.product_name}). Please connect me to the seller.`
-                      )}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] hover:bg-[#20ba56] text-white text-[9px] font-black uppercase tracking-wider rounded-xl transition-all shadow-md shadow-green-500/10 cursor-pointer select-none"
-                    >
-                      <MessageCircle size={12} className="fill-white" />
-                      Chat on WhatsApp
-                    </a>
+                    <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">
+                      {['closed', 'deal closed', 'fulfilled', 'won'].includes(inq.status?.toLowerCase())
+                        ? "How was your experience?"
+                        : "Need instant updates?"}
+                    </span>
+                    <div className="flex gap-2">
+                      {['closed', 'deal closed', 'fulfilled', 'won'].includes(inq.status?.toLowerCase()) && (
+                        inq.is_reviewed ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 border border-gray-200 text-gray-400 text-[9px] font-black uppercase tracking-wider rounded-xl select-none">
+                            Review Given
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setReviewModal({ open: true, product_id: inq.product_id, product_name: inq.product_name })}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-orange-600 text-white text-[9px] font-black uppercase tracking-wider rounded-xl transition-all shadow-md shadow-orange-500/10 cursor-pointer select-none"
+                          >
+                            <Star size={12} className="fill-white text-white" />
+                            Leave a Review
+                          </button>
+                        )
+                      )}
+                      <a
+                        href={`https://wa.me/919667435374?text=${encodeURIComponent(
+                          `Hello PackagingBazaar Team, I want to track my requirement PB-LID-${inq.id} (${inq.product_name}). Please connect me to the seller.`
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] hover:bg-[#20ba56] text-white text-[9px] font-black uppercase tracking-wider rounded-xl transition-all shadow-md shadow-green-500/10 cursor-pointer select-none"
+                      >
+                        <MessageCircle size={12} className="fill-white" />
+                        Chat on WhatsApp
+                      </a>
+                    </div>
                   </div>
                 </div>
+              )}
               </div>
             );
           })}
@@ -357,6 +529,72 @@ export default function InquiryHistory() {
           >
             Next →
           </button>
+        </div>
+      )}
+
+      {/* ── Product Review Modal ── */}
+      {reviewModal.open && (
+        <div className="fixed inset-0 z-[200] bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div onClick={() => setReviewModal({ open: false, product_id: null, product_name: "" })} className="absolute inset-0" />
+          
+          <div className="relative bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl transition-all scale-[1.02]">
+            <h3 className="font-syne font-black text-xl text-gray-900 uppercase mb-2">
+              Review {reviewModal.product_name}
+            </h3>
+            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-6">
+              Share your experience with this product
+            </p>
+
+            {/* Dynamic Star Rating Selector */}
+            <div className="flex items-center justify-center gap-2 mb-6">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  onClick={() => setReviewRating(star)}
+                  className="p-1 hover:scale-125 transition-transform cursor-pointer"
+                >
+                  <Star
+                    size={32}
+                    className={`transition-colors duration-200 ${
+                      star <= reviewRating
+                        ? "text-amber-400 fill-amber-400"
+                        : "text-gray-200 fill-none"
+                    }`}
+                  />
+                </button>
+              ))}
+            </div>
+
+            {/* Review Comment Box */}
+            <textarea
+              value={reviewComment}
+              onChange={(e) => setReviewComment(e.target.value)}
+              placeholder="How was the product quality, width, thickness, and delivery speed?..."
+              className="w-full text-sm text-gray-700 p-4 rounded-2xl border border-gray-200 bg-gray-50 outline-none focus:border-accent resize-none h-32 mb-6 font-medium"
+            />
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 justify-end">
+              <button
+                disabled={submittingReview}
+                onClick={() => {
+                  setReviewModal({ open: false, product_id: null, product_name: "" });
+                  setReviewComment("");
+                  setReviewRating(5);
+                }}
+                className="px-6 py-3 rounded-xl text-xs font-black uppercase text-gray-500 hover:bg-gray-100 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={submittingReview}
+                onClick={handleSubmitReview}
+                className="px-6 py-3 rounded-xl text-xs font-black uppercase bg-accent text-white hover:bg-accent/90 transition-colors flex items-center gap-2 shadow-lg shadow-orange-500/20 disabled:opacity-50"
+              >
+                {submittingReview ? "Submitting..." : "Submit Review"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

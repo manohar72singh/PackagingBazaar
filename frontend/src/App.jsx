@@ -28,6 +28,7 @@ import HotDealsPage from "./pages/HotDealsPage";
 import SellerPage from "./pages/SellerPage";
 import BlogPage from "./pages/BlogPage";
 import BlogDetailPage from "./pages/BlogDetailPage";
+import WriteSiteReviewPage from "./pages/WriteSiteReviewPage";
 
 // Admin
 import AdminDashboard from "./Admin/pages/AdminDashboard";
@@ -86,6 +87,9 @@ export default function App() {
                   <Route path="/blog/:slug" element={<BlogDetailPage />} />
                 </Route>
               </Route>
+              
+              {/* Standalone Write Site Review (Public invitation link) */}
+              <Route path="/site-review/write" element={<WriteSiteReviewPage />} />
 
               {/* Global 404 */}
               <Route path="*" element={<NotFound />} />

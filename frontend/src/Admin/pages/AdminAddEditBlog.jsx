@@ -125,6 +125,10 @@ export default function AdminAddEditBlog() {
     title: "", excerpt: "", content: "", author: "PackagingBazaar Team",
     category: "General", tags: "", status: "draft",
     image_url: "",
+    meta_title: "",
+    meta_description: "",
+    meta_keywords: "",
+    custom_slug: "",
   });
   const [imageMode, setImageMode] = useState("url"); // 'url' | 'upload'
   const [uploadFile, setUploadFile] = useState(null);
@@ -143,6 +147,10 @@ export default function AdminAddEditBlog() {
             title: b.title, excerpt: b.excerpt || "", content: b.content,
             author: b.author, category: b.category, tags: b.tags || "",
             status: b.status, image_url: b.image_type === "url" ? b.cover_image || "" : "",
+            meta_title: b.meta_title || "",
+            meta_description: b.meta_description || "",
+            meta_keywords: b.meta_keywords || "",
+            custom_slug: b.slug || "",
           });
           setImageMode(b.image_type || "url");
           if (b.image_type === "upload" && b.cover_image) {
@@ -155,6 +163,19 @@ export default function AdminAddEditBlog() {
   }, [id, isEdit]);
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  // Auto-generate slug from title for new posts
+  useEffect(() => {
+    if (!isEdit && form.title) {
+      const generated = form.title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-');
+      setForm(prev => ({ ...prev, custom_slug: generated }));
+    }
+  }, [form.title, isEdit]);
 
   const validate = () => {
     const e = {};
@@ -271,6 +292,95 @@ export default function AdminAddEditBlog() {
               <p className="text-[11px] text-ink3 mt-1.5">
                 Use the toolbar for Bold, Headings, Lists, Quotes etc. Content will display exactly as formatted.
               </p>
+            </div>
+
+            {/* Search Engine Optimization (SEO) Settings */}
+            <div className="bg-white border border-black/[0.06] rounded-[2rem] p-6 space-y-5 shadow-sm">
+              <div className="border-b border-black/[0.05] pb-3 mb-2">
+                <h3 className="font-syne font-black text-sm uppercase tracking-widest text-ink flex items-center gap-2">
+                  <Image size={16} className="text-accent" /> Search Engine Optimization (SEO)
+                </h3>
+                <p className="text-[10px] text-ink3 font-bold uppercase tracking-wider mt-0.5">
+                  Customize how your article appears on Google Search results
+                </p>
+              </div>
+
+              {/* Custom SEO URL Slug */}
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-ink2 mb-1.5 ml-0.5">
+                  URL Slug Override
+                </label>
+                <div className="flex items-center bg-gray-50 border border-black/[0.08] rounded-xl overflow-hidden focus-within:border-accent transition-all">
+                  <span className="bg-gray-100/80 text-[10px] font-black uppercase tracking-widest px-3.5 py-3 border-r border-black/[0.08] select-none text-ink3">
+                    /blog/
+                  </span>
+                  <input
+                    value={form.custom_slug}
+                    onChange={(e) => set("custom_slug", e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''))}
+                    placeholder="custom-url-slug"
+                    className="flex-1 bg-transparent px-3 py-2 text-xs font-bold text-ink focus:outline-none"
+                  />
+                </div>
+                <p className="text-[9px] text-ink3 mt-1 ml-0.5 font-semibold">
+                  Auto-generated from title if left blank. Only lowercase letters, numbers, and dashes.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Custom Meta Title */}
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-ink2 mb-1.5 ml-0.5">
+                    Custom Meta Title
+                  </label>
+                  <input
+                    value={form.meta_title}
+                    onChange={(e) => set("meta_title", e.target.value)}
+                    placeholder="Leave blank to use Blog Title..."
+                    maxLength={60}
+                    className="w-full px-4 py-2.5 rounded-xl border border-black/[0.1] text-xs font-semibold focus:outline-none focus:border-accent bg-white"
+                  />
+                  <div className="flex justify-between items-center mt-1 ml-0.5">
+                    <span className="text-[9px] text-ink3 font-medium">Recommended: Under 60 chars</span>
+                    <span className="text-[9px] font-bold text-ink2">{form.meta_title?.length || 0}/60</span>
+                  </div>
+                </div>
+
+                {/* Custom Meta Keywords */}
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-ink2 mb-1.5 ml-0.5">
+                    SEO Keywords
+                  </label>
+                  <input
+                    value={form.meta_keywords}
+                    onChange={(e) => set("meta_keywords", e.target.value)}
+                    placeholder="e.g. rigid box price, luxury packaging supplier"
+                    className="w-full px-4 py-2.5 rounded-xl border border-black/[0.1] text-xs font-semibold focus:outline-none focus:border-accent bg-white"
+                  />
+                  <p className="text-[9px] text-ink3 mt-1 ml-0.5 font-semibold">
+                    Comma-separated terms targeting search.
+                  </p>
+                </div>
+              </div>
+
+              {/* Custom Meta Description */}
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-ink2 mb-1.5 ml-0.5">
+                  Custom Meta Description
+                </label>
+                <textarea
+                  value={form.meta_description}
+                  onChange={(e) => set("meta_description", e.target.value)}
+                  placeholder="Leave blank to use Short Excerpt..."
+                  rows={2}
+                  maxLength={160}
+                  className="w-full px-4 py-2.5 rounded-xl border border-black/[0.1] text-xs focus:outline-none focus:border-accent bg-white resize-none"
+                />
+                <div className="flex justify-between items-center mt-1 ml-0.5">
+                  <span className="text-[9px] text-ink3 font-medium">Recommended: 120-160 chars</span>
+                  <span className="text-[9px] font-bold text-ink2">{form.meta_description?.length || 0}/160</span>
+                </div>
+              </div>
+
             </div>
           </div>
 

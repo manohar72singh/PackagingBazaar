@@ -30,11 +30,28 @@ export const updateUserProfile = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid mobile number. Must be 10 digits." });
     }
 
+    // Check Existing Mobile belonging to another user
+    if (mobile) {
+      const formattedMobile = String(mobile).trim();
+      const [existingMobile] = await pool.query("SELECT id FROM users WHERE mobile = ? AND id != ?", [formattedMobile, userId]);
+      if (existingMobile.length > 0) {
+        return res.status(400).json({ success: false, message: "This mobile number is already registered to another account." });
+      }
+    }
+
     await pool.query("UPDATE users SET name = ?, mobile = ? WHERE id = ?", [name, mobile || null, userId]);
 
     res.status(200).json({ success: true, message: "Profile updated successfully!" });
   } catch (err) {
     console.error("Error in updateUserProfile:", err);
+    if (err.code === "ER_DUP_ENTRY") {
+      let dupMessage = "This information is already registered to another account.";
+      const errStr = String(err.message || "").toLowerCase();
+      if (errStr.includes("mobile")) {
+        dupMessage = "This mobile number is already registered to another account.";
+      }
+      return res.status(400).json({ success: false, message: dupMessage });
+    }
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };

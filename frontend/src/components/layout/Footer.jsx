@@ -120,7 +120,17 @@ export default function Footer() {
         </div>
         <div className="border-t border-white/[0.08] pt-6 flex flex-col md:flex-row justify-between items-center gap-2 text-xs">
           <span>© 2025 PackagingBazaar. All rights reserved.</span>
-          {/* <span>Made with ♥ in India</span> */}
+          <span>
+            Designed and Developed by{" "}
+            <a
+              href="https://urgentitsolution.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white hover:text-accent font-bold transition-colors"
+            >
+              Urgent IT Solution
+            </a>
+          </span>
         </div>
       </div>
     </footer>

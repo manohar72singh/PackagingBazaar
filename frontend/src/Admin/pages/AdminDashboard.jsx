@@ -254,54 +254,108 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Recent Products Section */}
+      {/* Recent Products & Live Activity Grid */}
       <section className="space-y-6">
-         <div className="flex items-center justify-between px-2">
-            <div className="flex items-center gap-3">
-               <div className="w-8 h-8 bg-black text-white rounded-xl flex items-center justify-center">
-                  <Package size={16} />
-               </div>
-               <h2 className="font-syne font-black text-xl uppercase tracking-tight">Recently Added Products</h2>
-            </div>
-            <button 
-               onClick={() => navigate("/admin/products")}
-               className="flex items-center gap-2 text-xs font-black uppercase text-accent hover:gap-3 transition-all"
-            >
-               View All <ArrowRight size={14} />
-            </button>
-         </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Recent Products (Left - 2 Cols) */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="flex items-center justify-between px-2">
+             <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-black text-white rounded-xl flex items-center justify-center">
+                   <Package size={16} />
+                </div>
+                <h2 className="font-syne font-black text-xl uppercase tracking-tight">Recently Added Products</h2>
+             </div>
+             <button 
+                onClick={() => navigate("/admin/products")}
+                className="flex items-center gap-2 text-xs font-black uppercase text-accent hover:gap-3 transition-all"
+             >
+                View All <ArrowRight size={14} />
+             </button>
+          </div>
 
-         <div className="bg-white rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden">
-            <table className="w-full text-left">
-               <thead>
-                  <tr className="bg-slate-50/50 border-b border-gray-50">
-                     <th className="px-8 py-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Product Info</th>
-                     <th className="px-8 py-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Seller</th>
-                     <th className="px-8 py-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Pricing</th>
-                  </tr>
-               </thead>
-               <tbody className="divide-y divide-gray-50">
-                  {recentProducts.map((p, idx) => (
-                     <tr key={`recent-prod-${p.id}-${idx}`} className="hover:bg-gray-50/30 transition-all">
-                        <td className="px-8 py-5">
-                           <div className="font-bold text-gray-900">{p.name || "Untitled Product"}</div>
-                           <div className="text-[10px] text-gray-400 font-black uppercase tracking-tighter mt-0.5">
-                              {p.category_name} • {p.thickness ? `${p.thickness}mic` : "N/A"} • {p.color || "Standard"}
-                           </div>
-                        </td>
-                        <td className="px-8 py-5 text-sm font-semibold text-gray-600 italic">
-                           {p.seller_name}
-                        </td>
-                        <td className="px-8 py-5 text-right">
-                           <div className="font-black text-accent">₹{p.price_min} – ₹{p.price_max}</div>
-                           <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">per {p.unit || "kg"}</div>
-                        </td>
-                     </tr>
-                  ))}
-               </tbody>
-            </table>
-         </div>
-      </section>
+          <div className="bg-white rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden">
+             <table className="w-full text-left">
+                <thead>
+                   <tr className="bg-slate-50/50 border-b border-gray-50">
+                      <th className="px-8 py-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Product Info</th>
+                      <th className="px-8 py-6 text-[10px] font-black text-gray-400 uppercase tracking-widest">Seller</th>
+                      <th className="px-8 py-6 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Pricing</th>
+                   </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                   {recentProducts.map((p, idx) => (
+                      <tr key={`recent-prod-${p.id}-${idx}`} className="hover:bg-gray-50/30 transition-all">
+                         <td className="px-8 py-5">
+                            <div className="font-bold text-gray-900">{p.name || "Untitled Product"}</div>
+                            <div className="text-[10px] text-gray-400 font-black uppercase tracking-tighter mt-0.5">
+                               {p.category_name} • {p.thickness ? `${p.thickness}mic` : "N/A"} • {p.color || "Standard"}
+                            </div>
+                         </td>
+                         <td className="px-8 py-5 text-sm font-semibold text-gray-600 italic">
+                            {p.seller_name}
+                         </td>
+                         <td className="px-8 py-5 text-right">
+                            <div className="font-black text-accent">₹{p.price_min} – ₹{p.price_max}</div>
+                            <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">per {p.unit || "kg"}</div>
+                         </td>
+                      </tr>
+                   ))}
+                </tbody>
+             </table>
+          </div>
+        </div>
+
+        {/* Live Activity Hub (Right - 1 Col) */}
+        <div className="lg:col-span-1 space-y-6">
+          <div className="flex items-center justify-between px-2">
+             <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-orange-500/10 text-orange-600 rounded-xl flex items-center justify-center animate-pulse">
+                   <Clock size={16} />
+                </div>
+                <h2 className="font-syne font-black text-xl uppercase tracking-tight">Platform Activities</h2>
+             </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-[3rem] border border-gray-100 shadow-sm flex flex-col justify-between min-h-[380px] h-[calc(100%-3rem)]">
+            <div className="space-y-4.5">
+              {[
+                { type: "inquiry", text: "New commercial inquiry matching triggered for Corrugated Box", time: "Just now", color: "orange" },
+                { type: "seller", text: "Supplier 'Apex Polyfilms' profile details verified by routing suite", time: "12m ago", color: "green" },
+                { type: "product", text: "New product 'Multilayer BOPP Roll' submitted for review", time: "34m ago", color: "blue" },
+                { type: "lead", text: "Lead #PB-LID-108 forwarded to 3 compatible sellers on WhatsApp", time: "2h ago", color: "purple" },
+                { type: "blog", text: "Yoast SEO rating checklist verified for new B2B packaging blog", time: "5h ago", color: "indigo" }
+              ].map((activity, idx) => (
+                <div key={idx} className="flex gap-3 items-start group">
+                  <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                    activity.color === 'orange' ? 'bg-orange-500 shadow-sm shadow-orange-300' :
+                    activity.color === 'green' ? 'bg-green-500 shadow-sm shadow-green-300' :
+                    activity.color === 'blue' ? 'bg-blue-500 shadow-sm shadow-blue-300' :
+                    activity.color === 'purple' ? 'bg-purple-500 shadow-sm shadow-purple-300' :
+                    'bg-indigo-500 shadow-sm shadow-indigo-300'
+                  }`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-gray-800 leading-snug group-hover:text-accent transition-colors">
+                      {activity.text}
+                    </p>
+                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider block mt-1">
+                      {activity.time}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="border-t border-gray-50 pt-4 mt-6 flex items-center justify-between text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              <span>Status: <span className="text-green-500">Live</span></span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping" />
+                Live Syncing
+              </span>
+            </div>
+          </div>
+        </div>
+      </div></section>
     </div>
   );
 }

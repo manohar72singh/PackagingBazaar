@@ -22,6 +22,21 @@ export const register = async (req, res) => {
     if (!validateMobile(mobile)) return res.status(400).json({ success: false, message: "Mobile number must be exactly 10 digits." });
     if (!validatePassword(password)) return res.status(400).json({ success: false, message: "Password must be at least 6 characters." });
 
+    // Check Existing Email
+    const [existingEmail] = await pool.query("SELECT id FROM users WHERE email = ?", [email]);
+    if (existingEmail.length > 0) {
+      return res.status(400).json({ success: false, message: "This email is already registered." });
+    }
+
+    // Check Existing Mobile
+    if (mobile) {
+      const formattedMobile = String(mobile).trim();
+      const [existingMobile] = await pool.query("SELECT id FROM users WHERE mobile = ?", [formattedMobile]);
+      if (existingMobile.length > 0) {
+        return res.status(400).json({ success: false, message: "This mobile number is already registered." });
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // FIX: 'is_verified' explicitly set to 1 (Normal user auto-verified)
@@ -41,7 +56,17 @@ export const register = async (req, res) => {
     res.status(201).json({ success: true, message: "Account created successfully!" });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: "Email already exists or Database error." });
+    if (err.code === "ER_DUP_ENTRY") {
+      let dupMessage = "An account with these details already exists.";
+      const errStr = String(err.message || "").toLowerCase();
+      if (errStr.includes("email")) {
+        dupMessage = "This email is already registered.";
+      } else if (errStr.includes("mobile")) {
+        dupMessage = "This mobile number is already registered.";
+      }
+      return res.status(400).json({ success: false, message: dupMessage });
+    }
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
@@ -124,12 +149,34 @@ export const registerSeller = async (req, res) => {
     if (!validateGST(gstNumber)) return res.status(400).json({ success: false, message: "Invalid GST number format." });
     if (!validatePassword(password)) return res.status(400).json({ success: false, message: "Password must be at least 6 characters." });
 
-    // Check Existing User
+    // Check Existing User (Email)
     const [existingUser] = await connection.query("SELECT id FROM users WHERE email = ?", [email]);
     if (existingUser.length > 0) {
       await connection.rollback();
       if (req.file) fs.unlinkSync(req.file.path);
-      return res.status(400).json({ success: false, message: "Email already registered." });
+      return res.status(400).json({ success: false, message: "This email is already registered." });
+    }
+
+    // Check Existing Mobile
+    if (mobile) {
+      const formattedMobile = String(mobile).trim();
+      const [existingMobile] = await connection.query("SELECT id FROM users WHERE mobile = ?", [formattedMobile]);
+      if (existingMobile.length > 0) {
+        await connection.rollback();
+        if (req.file) fs.unlinkSync(req.file.path);
+        return res.status(400).json({ success: false, message: "This mobile number is already registered." });
+      }
+    }
+
+    // Check Existing GST Number
+    if (gstNumber) {
+      const formattedGST = String(gstNumber).trim();
+      const [existingGST] = await connection.query("SELECT id FROM sellers WHERE gst_number = ?", [formattedGST]);
+      if (existingGST.length > 0) {
+        await connection.rollback();
+        if (req.file) fs.unlinkSync(req.file.path);
+        return res.status(400).json({ success: false, message: "This GST number is already registered." });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -233,6 +280,20 @@ export const registerSeller = async (req, res) => {
     await connection.rollback();
     if (req.file) fs.unlinkSync(req.file.path);
     console.error("Seller Registration Error:", error);
+    
+    if (error.code === "ER_DUP_ENTRY") {
+      let dupMessage = "A seller with these details already exists.";
+      const errStr = String(error.message || "").toLowerCase();
+      if (errStr.includes("email")) {
+        dupMessage = "This email is already registered.";
+      } else if (errStr.includes("mobile")) {
+        dupMessage = "This mobile number is already registered.";
+      } else if (errStr.includes("gst_number")) {
+        dupMessage = "This GST number is already registered.";
+      }
+      return res.status(400).json({ success: false, message: dupMessage });
+    }
+    
     res.status(500).json({ success: false, message: "Server Error" });
   } finally {
     connection.release();

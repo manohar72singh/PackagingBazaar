@@ -597,6 +597,35 @@ export const updateSellerProfile = async (req, res) => {
         });
     }
 
+    // Check duplicate Email
+    if (email) {
+      const [existingEmail] = await connection.query("SELECT id FROM users WHERE email = ? AND id != ?", [email, userId]);
+      if (existingEmail.length > 0) {
+        await connection.rollback();
+        return res.status(400).json({ success: false, message: "This email is already registered to another account." });
+      }
+    }
+
+    // Check duplicate Phone
+    if (phone) {
+      const formattedPhone = String(phone).trim();
+      const [existingMobile] = await connection.query("SELECT id FROM users WHERE mobile = ? AND id != ?", [formattedPhone, userId]);
+      if (existingMobile.length > 0) {
+        await connection.rollback();
+        return res.status(400).json({ success: false, message: "This mobile number is already registered to another account." });
+      }
+    }
+
+    // Check duplicate GST Number
+    if (gstNumber) {
+      const formattedGST = String(gstNumber).trim();
+      const [existingGST] = await connection.query("SELECT id FROM sellers WHERE gst_number = ? AND user_id != ?", [formattedGST, userId]);
+      if (existingGST.length > 0) {
+        await connection.rollback();
+        return res.status(400).json({ success: false, message: "This GST number is already registered to another seller." });
+      }
+    }
+
     const businessTypeString = Array.isArray(businessType)
       ? businessType.join(", ")
       : businessType;
@@ -659,6 +688,20 @@ export const updateSellerProfile = async (req, res) => {
   } catch (error) {
     if (connection) await connection.rollback();
     console.error("Error in updateSellerProfile:", error);
+    
+    if (error.code === "ER_DUP_ENTRY") {
+      let dupMessage = "This information is already registered to another account.";
+      const errStr = String(error.message || "").toLowerCase();
+      if (errStr.includes("email")) {
+        dupMessage = "This email is already registered to another account.";
+      } else if (errStr.includes("mobile") || errStr.includes("phone")) {
+        dupMessage = "This mobile number is already registered to another account.";
+      } else if (errStr.includes("gst_number")) {
+        dupMessage = "This GST number is already registered to another seller.";
+      }
+      return res.status(400).json({ success: false, message: dupMessage });
+    }
+    
     res
       .status(500)
       .json({ success: false, message: "Server Error", error: error.message });

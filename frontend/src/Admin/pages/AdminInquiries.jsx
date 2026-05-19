@@ -11,7 +11,8 @@ import {
   Send,
   XCircle,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  ChevronDown
 } from "lucide-react";
 import { 
   fetchInquiriesAdmin, 
@@ -23,6 +24,7 @@ import {
 import { useNotification } from "../../context/NotificationContext";
 import Pagination from "../../components/ui/Pagination";
 import SubViewOverlay from "../components/SubViewOverlay";
+import { motion } from "framer-motion";
 
 export default function AdminInquiries() {
   const [inquiries, setInquiries] = useState([]);
@@ -32,42 +34,44 @@ export default function AdminInquiries() {
   const [search, setSearch] = useState("");
   const [selectedLead, setSelectedLead] = useState(null);
   const [statusModal, setStatusModal] = useState({ open: false, inquiry: null, status: "", sellers: [] });
+  const [expandedLeads, setExpandedLeads] = useState({});
+  const toggleExpandLead = (id) => setExpandedLeads(p => ({ ...p, [id]: !p[id] }));
   const [filters, setFilters] = useState({
     status: "",
     product: "",
     seller: ""
   });
+  const [uniqueProducts, setUniqueProducts] = useState([]);
+  const [uniqueSellers, setUniqueSellers] = useState([]);
   const { notifyError, notifySuccess } = useNotification();
   const [exporting, setExporting] = useState(false);
   const [submitting, setSubmitting] = useState(null); // inquiryId
 
-  // Get unique lists for filters
-  const productNames = [...new Set(inquiries.map(i => i.product_name))].filter(Boolean);
-  const sellerNames = [...new Set(inquiries.map(i => i.seller_name))].filter(Boolean);
-
   const debounceRef = useRef(null);
 
   useEffect(() => {
-    loadInquiries(1, search);
+    loadInquiries(1, search, filters);
   }, []);
 
   // Debounced search — fires API call 400ms after user stops typing
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      loadInquiries(1, search);
+      loadInquiries(1, search, filters);
     }, 400);
     return () => clearTimeout(debounceRef.current);
   }, [search]);
 
-  const loadInquiries = async (page, searchTerm = search) => {
+  const loadInquiries = async (page, searchTerm = search, currentFilters = filters) => {
     setLoading(true);
     try {
-      const res = await fetchInquiriesAdmin(page, 10, searchTerm);
+      const res = await fetchInquiriesAdmin(page, 10, searchTerm, currentFilters);
       if (res.success) {
         setInquiries(res.inquiries);
         setTotalPages(res.totalPages || 1);
         setCurrentPage(res.currentPage || 1);
+        if (res.uniqueProducts) setUniqueProducts(res.uniqueProducts);
+        if (res.uniqueSellers) setUniqueSellers(res.uniqueSellers);
       }
     } catch (err) {
       notifyError("Failed to load inquiries");
@@ -76,13 +80,12 @@ export default function AdminInquiries() {
     }
   };
 
-  // Client-side filters (status, product, seller) applied on top of server search results
-  const filteredInquiries = inquiries.filter((item) => {
-    const matchesStatus = !filters.status || item.status === filters.status;
-    const matchesProduct = !filters.product || item.product_name === filters.product;
-    const matchesSeller = !filters.seller || item.seller_name === filters.seller;
-    return matchesStatus && matchesProduct && matchesSeller;
-  });
+  const handleFilterChange = (newFilters) => {
+    setFilters(newFilters);
+    loadInquiries(1, search, newFilters);
+  };
+
+  const filteredInquiries = inquiries;
 
   const handleStatusClick = async (inquiry, newStatus) => {
     if (newStatus === 'Closed') {
@@ -228,7 +231,7 @@ export default function AdminInquiries() {
           </div>
           <select
             value={filters.status}
-            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+            onChange={(e) => handleFilterChange({ ...filters, status: e.target.value })}
             className="bg-transparent border-none text-[11px] font-bold text-gray-600 outline-none py-2 pr-4 cursor-pointer"
           >
             <option value="">Any Status</option>
@@ -241,25 +244,25 @@ export default function AdminInquiries() {
           <div className="w-px h-4 bg-gray-100" />
           <select
             value={filters.product}
-            onChange={(e) => setFilters({ ...filters, product: e.target.value })}
-            className="bg-transparent border-none text-[11px] font-bold text-gray-600 outline-none py-2 pr-4 cursor-pointer"
+            onChange={(e) => handleFilterChange({ ...filters, product: e.target.value })}
+            className="bg-transparent border-none text-[11px] font-bold text-gray-600 outline-none py-2 pr-4 cursor-pointer max-w-[150px]"
           >
             <option value="">All Products</option>
-            {productNames.map(p => <option key={p} value={p}>{p}</option>)}
+            {uniqueProducts.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
           <div className="w-px h-4 bg-gray-100" />
           <select
             value={filters.seller}
-            onChange={(e) => setFilters({ ...filters, seller: e.target.value })}
-            className="bg-transparent border-none text-[11px] font-bold text-gray-600 outline-none py-2 pr-4 cursor-pointer"
+            onChange={(e) => handleFilterChange({ ...filters, seller: e.target.value })}
+            className="bg-transparent border-none text-[11px] font-bold text-gray-600 outline-none py-2 pr-4 cursor-pointer max-w-[150px]"
           >
             <option value="">All Sellers</option>
-            {sellerNames.map(s => <option key={s} value={s}>{s}</option>)}
+            {uniqueSellers.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
 
           {(filters.status || filters.product || filters.seller) && (
             <button 
-              onClick={() => setFilters({ status: "", product: "", seller: "" })}
+              onClick={() => handleFilterChange({ status: "", product: "", seller: "" })}
               className="text-[10px] font-black uppercase text-accent hover:underline px-3 border-l border-gray-100"
             >
               Clear
@@ -295,40 +298,63 @@ export default function AdminInquiries() {
             </div>
           </div>
         ) : (
-          filteredInquiries.map((inquiry) => (
-            <div 
-              key={inquiry.id} 
-              className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-xl hover:translate-y-[-2px] transition-all duration-300 relative overflow-hidden group"
-            >
-              {/* Lead ID Badge */}
-              <div className="absolute top-0 right-0 bg-slate-50/80 backdrop-blur-sm px-6 py-2.5 rounded-bl-[2rem] border-b border-l border-gray-100/50 flex items-center gap-3 group-hover:bg-accent group-hover:text-white transition-colors duration-500">
-                <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Lead ID</span>
-                <span className="text-sm font-syne font-black tracking-tight">#LID-{inquiry.id}</span>
-              </div>
-
-              <div className="p-6 md:p-8">
-                <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
-                  {/* Left Section: Buyer & Status */}
-                  <div className="xl:col-span-3 space-y-4">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-                        <h3 className="font-syne font-black text-xl text-gray-900 leading-tight uppercase tracking-tight">
+          filteredInquiries.map((inquiry) => {
+            const isExpanded = !!expandedLeads[inquiry.id];
+            return (
+              <div 
+                key={inquiry.id} 
+                className="bg-white rounded-[2rem] border border-gray-100 shadow-sm hover:shadow-xl hover:translate-y-[-2px] transition-all duration-300 relative overflow-hidden group"
+              >
+                <div className="p-5 md:p-6">
+                  <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-center">
+                    
+                    {/* Column 1: Buyer Info & Lead ID */}
+                    <div className="xl:col-span-3">
+                      <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                        <span className="bg-accent/15 text-accent text-[9px] font-black uppercase px-2.5 py-1 rounded-xl border border-accent/20 tracking-wider shrink-0 shadow-sm shadow-accent/5">
+                          LID-{inquiry.id}
+                        </span>
+                        <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse shrink-0" />
+                        <h3 className="font-syne font-black text-sm text-gray-900 leading-tight uppercase tracking-tight truncate max-w-[140px]" title={inquiry.buyer_name || inquiry.buyer_display_name}>
                           {inquiry.buyer_name || inquiry.buyer_display_name}
                         </h3>
                       </div>
-                      <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest pl-4">
-                        {new Date(inquiry.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} • {new Date(inquiry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest pl-2">
+                        {new Date(inquiry.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} • {new Date(inquiry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
 
-                    <div className="pl-4">
-                      <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-2">Process Status</label>
+                    {/* Column 2: Material Requirement & Badges */}
+                    <div className="xl:col-span-4 pl-0 xl:pl-4 xl:border-l border-gray-50 flex flex-col justify-center">
+                      <h4 className="text-xs font-bold text-gray-800 leading-tight truncate mb-1.5" title={inquiry.product_name}>
+                        {inquiry.product_name}
+                      </h4>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {inquiry.quantity_required && inquiry.quantity_required !== 'Not specified' && (
+                          <span className="bg-black text-white text-[8px] font-black uppercase px-2 py-0.5 rounded">
+                            Qty: {inquiry.quantity_required}
+                          </span>
+                        )}
+                        {inquiry.thickness && (
+                          <span className="bg-slate-100 text-gray-600 text-[8px] font-black px-2 py-0.5 rounded border border-gray-200">
+                            {inquiry.thickness} mic
+                          </span>
+                        )}
+                        {inquiry.width && (
+                          <span className="bg-slate-100 text-gray-600 text-[8px] font-black px-2 py-0.5 rounded border border-gray-200">
+                            {inquiry.width} wide
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Column 3: Process Status Dropdown */}
+                    <div className="xl:col-span-2 pl-0 xl:pl-4 xl:border-l border-gray-50">
                       <select 
                         disabled={submitting === inquiry.id}
                         value={inquiry.status || 'pending'}
                         onChange={(e) => handleStatusClick(inquiry, e.target.value)}
-                        className={`w-full text-[11px] font-black uppercase tracking-widest px-4 py-3 rounded-2xl border outline-none transition-all cursor-pointer ${
+                        className={`w-full text-[9px] font-black uppercase tracking-wider px-3 py-2 rounded-xl border outline-none transition-all cursor-pointer ${
                           submitting === inquiry.id ? 'opacity-50 cursor-not-allowed' : ''
                         } ${
                           inquiry.status === 'Closed' ? 'bg-green-50 border-green-100 text-green-600' :
@@ -337,166 +363,168 @@ export default function AdminInquiries() {
                           'bg-blue-50 border-blue-100 text-blue-600'
                         }`}
                       >
-                        <option value="pending">{submitting === inquiry.id ? 'Updating...' : 'New/Pending'}</option>
+                        <option value="pending">New/Pending</option>
                         <option value="Contacted">Contacted</option>
                         <option value="Negotiating">Negotiating</option>
                         <option value="Closed">Deal Closed</option>
                         <option value="Lost">Deal Lost</option>
                       </select>
                     </div>
+
+                    {/* Column 4: Quick Actions & Chevron Expander */}
+                    <div className="xl:col-span-3 flex items-center justify-end gap-1.5 pl-0 xl:pl-4 xl:border-l border-gray-50">
+                      <button 
+                        onClick={() => setSelectedLead({ 
+                          type: "lead", 
+                          id: inquiry.id, 
+                          name: `MATCHING FOR: ${inquiry.product_name}`, 
+                          mode: "lead-matching",
+                          pincode: inquiry.pincode,
+                          inquiryData: inquiry
+                        })}
+                        className="flex items-center justify-center gap-1 px-3 py-2 bg-accent hover:bg-black text-white rounded-xl font-black text-[9px] uppercase tracking-wider transition-all shadow-sm shrink-0"
+                        title="Smart Match Sellers"
+                      >
+                        <Zap size={10} />
+                        <span>Match</span>
+                      </button>
+
+                      <button 
+                        onClick={() => handleWhatsAppForward(inquiry)}
+                        className="flex items-center justify-center w-8 h-8 bg-white text-green-600 border border-green-100 rounded-xl hover:bg-green-50 transition-all shadow-sm shrink-0"
+                        title="Forward to WhatsApp"
+                      >
+                        <Send size={11} />
+                      </button>
+
+                      <button 
+                        onClick={() => toggleExpandLead(inquiry.id)}
+                        className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all shrink-0 ${
+                          isExpanded ? 'border-accent text-accent bg-orange-50/50' : 'border-gray-200 text-gray-400 hover:border-gray-300'
+                        }`}
+                        title={isExpanded ? "Collapse Details" : "View More Details"}
+                      >
+                        <ChevronDown 
+                          size={14} 
+                          className={`transform transition-transform duration-300 ${isExpanded ? 'rotate-180' : 'rotate-0'}`} 
+                        />
+                      </button>
+                    </div>
+
                   </div>
 
-                  {/* Middle Section: Requirements */}
-                  <div className="xl:col-span-3 border-l border-gray-50 pl-10 space-y-5">
-                    <div>
-                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-2">Requirement</span>
-                      <h4 className="text-base font-bold text-gray-800 leading-snug line-clamp-2">
-                        {inquiry.product_name}
-                      </h4>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      {inquiry.quantity_required && inquiry.quantity_required !== 'Not specified' && (
-                        <div className="bg-black text-white px-3 py-1.5 rounded-xl flex flex-col items-center">
-                          <span className="text-[7px] font-black uppercase opacity-60">Quantity</span>
-                          <span className="text-[11px] font-black">{inquiry.quantity_required}</span>
-                        </div>
-                      )}
-                      {inquiry.thickness && (
-                        <div className="bg-slate-50 text-gray-600 px-3 py-1.5 rounded-xl border border-gray-100 flex flex-col items-center">
-                          <span className="text-[7px] font-black uppercase opacity-60">Thickness</span>
-                          <span className="text-[11px] font-black">{inquiry.thickness}</span>
-                        </div>
-                      )}
-                      {inquiry.width && (
-                        <div className="bg-slate-50 text-gray-600 px-3 py-1.5 rounded-xl border border-gray-100 flex flex-col items-center">
-                          <span className="text-[7px] font-black uppercase opacity-60">Width</span>
-                          <span className="text-[11px] font-black">{inquiry.width}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {inquiry.message && (
-                      <div className="bg-slate-50/50 p-4 rounded-[1.5rem] border border-gray-50 italic text-gray-500 text-xs leading-relaxed relative">
-                        <MessageCircle size={14} className="absolute -top-1.5 -left-1.5 text-accent/20" />
-                        "{inquiry.message}"
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Right Section: Contact & Location */}
-                  <div className="xl:col-span-3 border-l border-gray-50 pl-10 space-y-6">
-                    <div>
-                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-2">Contact Info</span>
-                      <div className="space-y-1">
-                        <p className="text-sm font-bold text-gray-700">{inquiry.phone || inquiry.buyer_display_mobile}</p>
-                        <p className="text-[11px] font-medium text-gray-400 lowercase">{inquiry.buyer_email || inquiry.buyer_display_email}</p>
-                      </div>
-                    </div>
-
-                    <div>
-                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-2">Location</span>
-                      <p className="text-[11px] font-bold text-gray-600 uppercase tracking-tight">
-                        {inquiry.city}, {inquiry.state}
-                      </p>
-                      <p className="text-[10px] text-gray-400 font-medium">Pincode: {inquiry.pincode || 'N/A'}</p>
-                    </div>
-                  </div>
-
-                  {/* Actions Section */}
-                  <div className="xl:col-span-3 flex flex-col items-center xl:items-end justify-center gap-2 pl-0 xl:pl-10 xl:border-l border-gray-50">
-                    <button 
-                      onClick={() => setSelectedLead({ 
-                        type: "lead", 
-                        id: inquiry.id, 
-                        name: `MATCHING FOR: ${inquiry.product_name}`, 
-                        mode: "lead-matching",
-                        pincode: inquiry.pincode,
-                        inquiryData: inquiry
-                      })}
-                      className="w-full min-w-[160px] flex items-center justify-center gap-2 py-2.5 bg-accent text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all shadow-md group/zap"
+                  {/* Collapsible Details Panel */}
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.25 }}
+                      className="border-t border-gray-50 mt-4 pt-4 space-y-4"
                     >
-                      <Zap size={14} className="group-hover/zap:animate-bounce" />
-                      <span className="whitespace-nowrap">Smart Match</span>
-                    </button>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        
+                        {/* Contact & Location Details */}
+                        <div className="bg-slate-50/50 p-4 rounded-xl border border-gray-100/50 space-y-3">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest block mb-1">Contact Info</span>
+                              <p className="text-xs font-bold text-gray-800">{inquiry.phone || inquiry.buyer_display_mobile}</p>
+                              <p className="text-[10px] font-semibold text-gray-400 lowercase truncate">{inquiry.buyer_email || inquiry.buyer_display_email}</p>
+                            </div>
+                            <div>
+                              <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest block mb-1">Buyer Location</span>
+                              <p className="text-[10px] font-bold text-gray-700 uppercase tracking-tight">
+                                {inquiry.city}, {inquiry.state}
+                              </p>
+                              <p className="text-[9px] text-gray-400 font-medium">Pincode: {inquiry.pincode || 'N/A'}</p>
+                            </div>
+                          </div>
+                        </div>
 
-                    <button 
-                      onClick={() => handleWhatsAppForward(inquiry)}
-                      className="w-full min-w-[160px] flex items-center justify-center gap-2 py-2.5 bg-white text-green-600 border-2 border-green-100 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-green-50 transition-all shadow-sm"
-                    >
-                      <Send size={14} />
-                      <span className="whitespace-nowrap">WhatsApp</span>
-                    </button>
-                  </div>
-                </div>
+                        {/* Buyer Message Requirement Description */}
+                        <div className="space-y-1">
+                          <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest block">Detailed Requirement message</span>
+                          {inquiry.message ? (
+                            <div className="bg-orange-50/20 p-3 rounded-xl border border-orange-100/20 italic text-gray-600 text-xs leading-relaxed relative">
+                              <MessageCircle size={12} className="absolute -top-1.5 -left-1.5 text-accent/20" />
+                              "{inquiry.message}"
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-400 italic">No custom message specified by buyer.</p>
+                          )}
+                        </div>
 
-                {/* Assigned Sellers Progress Tracking */}
-                {inquiry.assigned_sellers && inquiry.assigned_sellers.length > 0 && (
-                  <div className="mt-6 px-6 md:px-8 py-3 bg-gray-50/30 rounded-2xl border border-dashed border-gray-100 flex flex-wrap items-center gap-3">
-                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest mr-2 flex items-center gap-1.5">
-                      <Zap size={10} className="text-accent" />
-                      Assignment Tracking:
-                    </span>
-                    {inquiry.assigned_sellers.map((as, idx) => (
-                      <div key={idx} className="flex items-center gap-2 bg-white border border-gray-100 rounded-xl px-3 py-1.5 shadow-sm">
-                        <span className="text-[10px] font-black text-gray-700 uppercase truncate max-w-[120px]">{as.company_name}</span>
-                        <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter ${
-                          as.status === 'fulfilled' ? 'bg-green-600 text-white shadow-sm shadow-green-100' :
-                          as.status === 'accepted' ? 'bg-blue-600 text-white shadow-sm shadow-blue-100' :
-                          as.status === 'rejected' ? 'bg-red-600 text-white shadow-sm shadow-red-100' :
-                          as.status === 'pending' ? 'bg-orange-500 text-white shadow-sm shadow-orange-100' :
-                          'bg-gray-100 text-gray-400'
-                        }`}>
-                          {as.status}
-                        </span>
                       </div>
-                    ))}
-                  </div>
-                )}
 
-                {/* Footer Section: Admin Notes & Won Info */}
-                <div className="mt-5 pt-4 border-t border-gray-50 flex flex-col md:flex-row items-center gap-4">
-                  <div className="flex-1 w-full flex items-center gap-3">
-                    <div className="bg-slate-50 px-3 py-1 rounded-lg border border-gray-100 shrink-0">
-                      <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Note</span>
-                    </div>
-                    <textarea 
-                      disabled={submitting === inquiry.id}
-                      defaultValue={inquiry.admin_notes || ""}
-                      onBlur={(e) => handleNotesChange(inquiry.id, e.target.value)}
-                      placeholder={submitting === inquiry.id ? "Saving..." : "Add private note..."}
-                      className={`flex-1 text-[11px] font-medium text-gray-600 px-4 py-1.5 rounded-xl border border-gray-100 bg-slate-50/20 outline-none focus:border-accent focus:bg-white transition-all h-8 resize-none flex items-center ${submitting === inquiry.id ? 'opacity-50' : ''}`}
-                    />
-                  </div>
-                  
-                  {inquiry.status === 'Closed' ? (
-                    <div className="w-full md:w-auto flex items-center gap-3 px-4 py-1.5 bg-green-50 rounded-xl border border-green-100">
-                      <div className="flex flex-col">
-                        <span className="text-[7px] font-black text-green-600 uppercase tracking-widest leading-none">Deal Winner</span>
-                        <p className="text-[10px] font-black text-green-700 line-clamp-1">{inquiry.won_seller_name || 'Seller Selected'}</p>
+                      {/* Assigned Sellers Progress Tracking */}
+                      {inquiry.assigned_sellers && inquiry.assigned_sellers.length > 0 && (
+                        <div className="px-4 py-2.5 bg-gray-50/30 rounded-xl border border-dashed border-gray-200 flex flex-wrap items-center gap-2">
+                          <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest mr-1.5 flex items-center gap-1">
+                            <Zap size={9} className="text-accent" />
+                            Assignments:
+                          </span>
+                          {inquiry.assigned_sellers.map((as, idx) => (
+                            <div key={idx} className="flex items-center gap-1.5 bg-white border border-gray-100 rounded-lg px-2.5 py-1 shadow-sm">
+                              <span className="text-[9px] font-black text-gray-700 uppercase truncate max-w-[100px]">{as.company_name}</span>
+                              <span className={`text-[7px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-tighter ${
+                                as.status === 'fulfilled' ? 'bg-green-600 text-white shadow-sm' :
+                                as.status === 'accepted' ? 'bg-blue-600 text-white shadow-sm' :
+                                as.status === 'rejected' ? 'bg-red-600 text-white shadow-sm' :
+                                as.status === 'pending' ? 'bg-orange-500 text-white shadow-sm' :
+                                'bg-gray-100 text-gray-400'
+                              }`}>
+                                {as.status}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Footer Section: Notes & Won Info */}
+                      <div className="pt-3 border-t border-gray-50 flex flex-col md:flex-row items-center gap-3">
+                        <div className="flex-1 w-full flex items-center gap-2">
+                          <div className="bg-slate-50 px-2 py-0.5 rounded border border-gray-100 shrink-0">
+                            <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Note</span>
+                          </div>
+                          <textarea 
+                            disabled={submitting === inquiry.id}
+                            defaultValue={inquiry.admin_notes || ""}
+                            onBlur={(e) => handleNotesChange(inquiry.id, e.target.value)}
+                            placeholder={submitting === inquiry.id ? "Saving..." : "Add private note..."}
+                            className={`flex-1 text-[10px] font-medium text-gray-600 px-3 py-1 rounded-lg border border-gray-100 bg-slate-50/20 outline-none focus:border-accent focus:bg-white transition-all h-7 resize-none flex items-center ${submitting === inquiry.id ? 'opacity-50' : ''}`}
+                          />
+                        </div>
+                        
+                        {inquiry.status === 'Closed' ? (
+                          <div className="w-full md:w-auto flex items-center gap-2 px-3 py-1 bg-green-50 rounded-lg border border-green-100 shrink-0">
+                            <span className="text-[7px] font-black text-green-600 uppercase tracking-widest leading-none">Winner</span>
+                            <p className="text-[9px] font-black text-green-700 max-w-[120px] truncate">{inquiry.won_seller_name || 'Seller Selected'}</p>
+                          </div>
+                        ) : inquiry.status === 'Lost' ? (
+                          <div className="w-full md:w-auto flex items-center gap-2 px-3 py-1 bg-red-50 rounded-lg border border-red-100 shrink-0">
+                            <span className="text-[7px] font-black text-red-600 uppercase tracking-widest leading-none">Reason</span>
+                            <p className="text-[9px] font-black text-red-700 max-w-[120px] truncate">{inquiry.lost_reason}</p>
+                          </div>
+                        ) : (
+                          <div className="w-full md:w-auto flex items-center gap-2 px-3 py-1 bg-slate-50/30 rounded-lg border border-gray-50 shrink-0">
+                            <div className="flex flex-col">
+                              <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest leading-none">Primary Seller</span>
+                              <p className="text-[9px] font-black text-gray-800 max-w-[120px] truncate">{inquiry.seller_name}</p>
+                            </div>
+                            <div className="w-px h-3 bg-gray-200" />
+                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-tight">{inquiry.seller_city}</p>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ) : inquiry.status === 'Lost' ? (
-                    <div className="w-full md:w-auto flex items-center gap-3 px-4 py-1.5 bg-red-50 rounded-xl border border-red-100">
-                      <div className="flex flex-col">
-                        <span className="text-[7px] font-black text-red-600 uppercase tracking-widest leading-none">Lost Reason</span>
-                        <p className="text-[10px] font-black text-red-700 line-clamp-1">{inquiry.lost_reason}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="w-full md:w-auto flex items-center gap-3 px-4 py-1.5 bg-slate-50/30 rounded-xl border border-gray-50">
-                      <div className="flex flex-col">
-                        <span className="text-[7px] font-black text-gray-400 uppercase tracking-widest leading-none">Primary Seller</span>
-                        <p className="text-[10px] font-black text-gray-800 line-clamp-1">{inquiry.seller_name}</p>
-                      </div>
-                      <div className="w-px h-4 bg-gray-200" />
-                      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-tight">{inquiry.seller_city}</p>
-                    </div>
+
+                    </motion.div>
                   )}
+
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -516,7 +544,7 @@ export default function AdminInquiries() {
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
-            onPageChange={(page) => loadInquiries(page, search)}
+            onPageChange={(page) => loadInquiries(page, search, filters)}
           />
         </div>
       )}

@@ -636,32 +636,50 @@ export const getSellersWithOrdersAdmin = async (req, res) => {
 
 // --- INQUIRY MANAGEMENT (LEADS) ---
 
-// 15. Get All Inquiries for Admin
 export const getAllInquiriesAdmin = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
     const search = req.query.search?.trim() || '';
+    const status = req.query.status || '';
+    const product = req.query.product || '';
+    const seller = req.query.seller || '';
 
-    // Build WHERE clause for search
-    let whereClause = '';
+    // Build WHERE clause
+    let whereClause = 'WHERE 1=1';
     let searchParams = [];
+
     if (search) {
       // Check if it's a Lead ID search (numeric or PB-LID-X / LID-X / #X format)
       const leadIdMatch = search.match(/^(?:pb-lid-|lid-|#)?(\d+)$/i);
       if (leadIdMatch) {
-        whereClause = 'WHERE i.id = ?';
-        searchParams = [parseInt(leadIdMatch[1])];
+        whereClause += ' AND i.id = ?';
+        searchParams.push(parseInt(leadIdMatch[1]));
       } else {
-        whereClause = `WHERE (
+        whereClause += ` AND (
           COALESCE(u.name, i.buyer_name) LIKE ? OR
           p.name LIKE ? OR
           s.company_name LIKE ?
         )`;
         const like = `%${search}%`;
-        searchParams = [like, like, like];
+        searchParams.push(like, like, like);
       }
+    }
+
+    if (status) {
+      whereClause += ' AND i.status = ?';
+      searchParams.push(status);
+    }
+
+    if (product) {
+      whereClause += ' AND p.name = ?';
+      searchParams.push(product);
+    }
+
+    if (seller) {
+      whereClause += ' AND s.company_name = ?';
+      searchParams.push(seller);
     }
 
     const query = `
@@ -709,12 +727,31 @@ export const getAllInquiriesAdmin = async (req, res) => {
     `;
     const [[{ total }]] = await pool.query(countQuery, searchParams);
 
+    // Fetch unique products and sellers from all inquiries to populate frontend filter dropdowns
+    const [productsRows] = await pool.query(`
+      SELECT DISTINCT p.name 
+      FROM inquiries i 
+      JOIN products p ON i.product_id = p.id 
+      ORDER BY p.name ASC
+    `);
+    const [sellersRows] = await pool.query(`
+      SELECT DISTINCT s.company_name 
+      FROM inquiries i 
+      JOIN sellers s ON i.seller_id = s.id 
+      ORDER BY s.company_name ASC
+    `);
+    
+    const uniqueProducts = productsRows.map(r => r.name).filter(Boolean);
+    const uniqueSellers = sellersRows.map(r => r.company_name).filter(Boolean);
+
     res.status(200).json({ 
       success: true, 
       inquiries: inquiries,
       totalCount: total,
       totalPages: Math.ceil(total / limit),
-      currentPage: page
+      currentPage: page,
+      uniqueProducts,
+      uniqueSellers
     });
   } catch (error) {
     console.error("Error fetching all inquiries for admin:", error);
@@ -860,6 +897,7 @@ export const getRecommendedSellers = async (req, res) => {
       SELECT * FROM (
         SELECT
           s.id as seller_id,
+          s.id as id,
           s.company_name,
           s.city,
           s.state,
@@ -1393,7 +1431,27 @@ export const addSellerAdmin = async (req, res) => {
     const [existing] = await connection.query("SELECT id FROM users WHERE email = ?", [email]);
     if (existing.length > 0) {
       await connection.rollback();
-      return res.status(400).json({ success: false, message: "Email already registered." });
+      return res.status(400).json({ success: false, message: "This email is already registered." });
+    }
+
+    // Check duplicate Mobile
+    if (mobile) {
+      const formattedMobile = String(mobile).trim();
+      const [existingMobile] = await connection.query("SELECT id FROM users WHERE mobile = ?", [formattedMobile]);
+      if (existingMobile.length > 0) {
+        await connection.rollback();
+        return res.status(400).json({ success: false, message: "This mobile number is already registered." });
+      }
+    }
+
+    // Check duplicate GST Number
+    if (gstNumber) {
+      const formattedGST = String(gstNumber).trim();
+      const [existingGST] = await connection.query("SELECT id FROM sellers WHERE gst_number = ?", [formattedGST]);
+      if (existingGST.length > 0) {
+        await connection.rollback();
+        return res.status(400).json({ success: false, message: "This GST number is already registered." });
+      }
     }
 
     // 3. Create User (Verified)
@@ -1474,6 +1532,20 @@ export const addSellerAdmin = async (req, res) => {
   } catch (error) {
     if (connection) await connection.rollback();
     console.error("Error in addSellerAdmin:", error);
+    
+    if (error.code === "ER_DUP_ENTRY") {
+      let dupMessage = "A seller with these details already exists.";
+      const errStr = String(error.message || "").toLowerCase();
+      if (errStr.includes("email")) {
+        dupMessage = "This email is already registered.";
+      } else if (errStr.includes("mobile")) {
+        dupMessage = "This mobile number is already registered.";
+      } else if (errStr.includes("gst_number")) {
+        dupMessage = "This GST number is already registered.";
+      }
+      return res.status(400).json({ success: false, message: dupMessage });
+    }
+    
     res.status(500).json({ success: false, message: "Server Error", error: error.message });
   } finally {
     if (connection) connection.release();
@@ -1491,6 +1563,35 @@ export const updateSellerDetailsAdmin = async (req, res) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
+
+    // Check duplicate Email
+    if (email) {
+      const [existingEmail] = await connection.query("SELECT id FROM users WHERE email = ? AND id != ?", [email, id]);
+      if (existingEmail.length > 0) {
+        await connection.rollback();
+        return res.status(400).json({ success: false, message: "This email is already registered to another account." });
+      }
+    }
+
+    // Check duplicate Phone
+    if (mobile) {
+      const formattedPhone = String(mobile).trim();
+      const [existingMobile] = await connection.query("SELECT id FROM users WHERE mobile = ? AND id != ?", [formattedPhone, id]);
+      if (existingMobile.length > 0) {
+        await connection.rollback();
+        return res.status(400).json({ success: false, message: "This mobile number is already registered to another account." });
+      }
+    }
+
+    // Check duplicate GST Number
+    if (gstNumber) {
+      const formattedGST = String(gstNumber).trim();
+      const [existingGST] = await connection.query("SELECT id FROM sellers WHERE gst_number = ? AND user_id != ?", [formattedGST, id]);
+      if (existingGST.length > 0) {
+        await connection.rollback();
+        return res.status(400).json({ success: false, message: "This GST number is already registered to another seller." });
+      }
+    }
 
     // 1. Update User Table
     if (ownerName || email || mobile) {
@@ -1541,6 +1642,20 @@ export const updateSellerDetailsAdmin = async (req, res) => {
   } catch (error) {
     if (connection) await connection.rollback();
     console.error("Error in updateSellerDetailsAdmin:", error);
+    
+    if (error.code === "ER_DUP_ENTRY") {
+      let dupMessage = "This information is already registered to another account.";
+      const errStr = String(error.message || "").toLowerCase();
+      if (errStr.includes("email")) {
+        dupMessage = "This email is already registered to another account.";
+      } else if (errStr.includes("mobile") || errStr.includes("phone")) {
+        dupMessage = "This mobile number is already registered to another account.";
+      } else if (errStr.includes("gst_number")) {
+        dupMessage = "This GST number is already registered to another seller.";
+      }
+      return res.status(400).json({ success: false, message: dupMessage });
+    }
+    
     res.status(500).json({ success: false, message: "Server Error", error: error.message });
   } finally {
     if (connection) connection.release();
@@ -1569,12 +1684,14 @@ export const updateInquiryStatus = async (req, res) => {
   const { id } = req.params;
   const { status, wonSellerId, lostReason, adminNotes } = req.body;
   try {
+    const isClosed = ['closed', 'deal closed', 'fulfilled', 'won'].includes(status?.toLowerCase());
     await pool.query(
       `UPDATE inquiries SET 
         status = ?, 
         won_seller_id = ?, 
         lost_reason = ?, 
-        admin_notes = COALESCE(?, admin_notes)
+        admin_notes = COALESCE(?, admin_notes),
+        closed_at = ${isClosed ? 'NOW()' : 'NULL'}
        WHERE id = ?`,
       [status, wonSellerId || null, lostReason || null, adminNotes || null, id]
     );

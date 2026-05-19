@@ -98,9 +98,12 @@ export const fetchSellersWithOrdersAdmin = async (page = 1, limit = 10) => {
 };
 
 // --- Lead Management (Inquiries) ---
-export const fetchInquiriesAdmin = async (page = 1, limit = 10, search = '') => {
+export const fetchInquiriesAdmin = async (page = 1, limit = 10, search = '', filters = {}) => {
   let url = `/admin/inquiries?page=${page}&limit=${limit}`;
   if (search) url += `&search=${encodeURIComponent(search)}`;
+  if (filters.status) url += `&status=${encodeURIComponent(filters.status)}`;
+  if (filters.product) url += `&product=${encodeURIComponent(filters.product)}`;
+  if (filters.seller) url += `&seller=${encodeURIComponent(filters.seller)}`;
   const response = await API.get(url);
   return response.data;
 };

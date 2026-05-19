@@ -52,19 +52,22 @@ const Badge = ({ children, color = "gray" }) => {
 
 // ─── STAT CARD ────────────────────────────────────────────────────────────────
 const StatCard = ({ icon, value, label, sub, color, onClick }) => {
-  const bg = { orange: "bg-[#e8511a]", blue: "bg-blue-500", green: "bg-green-500", purple: "bg-purple-500" };
   return (
     <div 
       onClick={onClick}
-      className={`bg-white rounded-2xl border border-gray-100 p-3 sm:p-4 flex items-center gap-2 sm:gap-3 shadow-sm transition-all ${onClick ? 'cursor-pointer hover:border-orange-200 hover:shadow-md active:scale-95' : ''}`}
+      className={`bg-white rounded-2xl border border-gray-100 p-4 flex items-center gap-3.5 shadow-sm transition-all duration-300 select-none ${
+        onClick 
+          ? 'cursor-pointer hover:border-orange-200 hover:shadow-md hover:shadow-orange-500/5 hover:scale-[1.02] active:scale-98' 
+          : 'hover:border-gray-200'
+      }`}
     >
-      <div className={`w-10 h-10 sm:w-11 sm:h-11 ${bg[color]} rounded-xl flex items-center justify-center shrink-0`}>
-        <Icon d={icons[icon]} size={20} stroke="white" />
+      <div className="w-11 h-11 bg-orange-50 border border-orange-100 text-orange-600 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-300">
+        <Icon d={icons[icon]} size={20} stroke="currentColor" />
       </div>
       <div className="min-w-0">
-        <div className="text-lg sm:text-xl font-black text-gray-900 leading-none">{value}</div>
-        <div className="text-xs font-medium text-gray-500 mt-0.5 truncate">{label}</div>
-        {sub && <div className="text-[10px] text-gray-400">{sub}</div>}
+        <div className="text-xl font-black text-gray-900 leading-none">{value}</div>
+        <div className="text-xs font-bold text-gray-500 mt-1 truncate uppercase tracking-wider">{label}</div>
+        {sub && <div className="text-[9px] text-gray-400 font-black uppercase tracking-widest mt-0.5">{sub}</div>}
       </div>
     </div>
   );
@@ -211,7 +214,6 @@ const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard", href: "/seller/dashboard" },
   { id: "products", label: "My Products", icon: "products", href: "/seller/products" },
   { id: "leads", label: "Business Leads", icon: "leads", href: "/seller/leads" },
-  { id: "orders", label: "Orders & History", icon: "orders", href: "/seller/orders" },
   { id: "profile", label: "Seller Profile", icon: "profile", href: "/seller/profile" },
 ];
 

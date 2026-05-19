@@ -686,6 +686,24 @@ export default function ProductDetailPage() {
           product={inquiryProduct}
         />
       </div>
+      
+      {/* Sticky Mobile Bottom Quote CTA Bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-t border-gray-100 px-6 py-4 flex items-center justify-between shadow-2xl animate-slideUp">
+        <div className="min-w-0">
+          <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest block">Min Order: {product.min_order} {product.unit}</span>
+          <div className="flex items-baseline gap-1 mt-0.5">
+            <span className="font-syne font-black text-lg text-gray-900">₹{product.min_price}</span>
+            <span className="text-gray-400 text-[10px] font-bold">/ {product.unit}</span>
+          </div>
+        </div>
+        <button
+          onClick={() => handleOpenInquiry(product)}
+          className="px-6 py-3 bg-accent text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-md shadow-orange-100 hover:bg-orange-600 active:scale-[0.98] transition-all flex items-center gap-1.5 shrink-0"
+        >
+          <Send size={12} /> Get Quote
+        </button>
+      </div>
+
       <WhyChooseUs />
     </div>
   );

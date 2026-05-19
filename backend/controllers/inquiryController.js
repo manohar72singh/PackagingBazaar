@@ -128,7 +128,29 @@ export const getBuyerInquiries = async (req, res) => {
     try {
         const buyer_id = req.user.id;
         const query = `
-            SELECT i.*, p.name as product_name, p.image_url, s.company_name as seller_name
+            SELECT i.*, p.name as product_name, p.image_url, s.company_name as seller_name,
+                   (
+                     SELECT JSON_ARRAYAGG(
+                       JSON_OBJECT(
+                         'seller_id', la.seller_id,
+                         'company_name', s2.company_name,
+                         'mobile', COALESCE(s2.mobile, u2.mobile),
+                         'email', u2.email,
+                         'city', s2.city,
+                         'state', s2.state,
+                         'status', la.assignment_status
+                       )
+                     )
+                     FROM lead_assignments la
+                     JOIN sellers s2 ON la.seller_id = s2.id
+                     JOIN users u2 ON s2.user_id = u2.id
+                     WHERE la.inquiry_id = i.id AND la.assignment_status IN ('accepted', 'fulfilled')
+                   ) as accepted_sellers,
+                   EXISTS(
+                     SELECT 1 
+                     FROM product_reviews pr 
+                     WHERE pr.product_id = i.product_id AND pr.user_id = i.buyer_id
+                   ) as is_reviewed
             FROM inquiries i
             JOIN products p ON i.product_id = p.id
             JOIN sellers s ON i.seller_id = s.id
@@ -136,7 +158,13 @@ export const getBuyerInquiries = async (req, res) => {
             ORDER BY i.created_at DESC
         `;
         const [rows] = await pool.query(query, [buyer_id]);
-        res.status(200).json({ success: true, inquiries: rows });
+        
+        const inquiries = rows.map(row => ({
+            ...row,
+            accepted_sellers: typeof row.accepted_sellers === 'string' ? JSON.parse(row.accepted_sellers) : row.accepted_sellers
+        }));
+
+        res.status(200).json({ success: true, inquiries });
     } catch (err) {
         console.error("Error fetching buyer inquiries:", err);
         res.status(500).json({ success: false, message: "Server Error" });
@@ -214,7 +242,7 @@ export const shareLeadToSeller = async (req, res) => {
                         <p><strong>Lead ID:</strong> PB-LID-${id}</p>
                         <p><strong>Product:</strong> ${inquiry.product_name}</p>
                         <p><strong>Quantity:</strong> ${inquiry.quantity_required || 'Not specified'}</p>
-                        <p><strong>Specs:</strong> ${inquiry.thickness || ''} ${inquiry.width || ''}</p>
+                        <p><strong>Specs:</strong> ${inquiry.thickness || ''} micron, ${inquiry.width || ''} mm</p>
                         <p><strong>Location:</strong> ${inquiry.city}, ${inquiry.state} - ${inquiry.pincode}</p>
                         <p><strong>Address:</strong> ${inquiry.address || 'N/A'}</p>
                     </div>
@@ -295,6 +323,17 @@ export const updateAssignmentStatus = async (req, res) => {
             "UPDATE lead_assignments SET assignment_status = ?, seller_notes = ? WHERE id = ?",
             [status, seller_notes || null, assignmentId]
         );
+
+        if (status === 'fulfilled') {
+            const [laDetails] = await pool.query("SELECT inquiry_id, seller_id FROM lead_assignments WHERE id = ?", [assignmentId]);
+            if (laDetails.length > 0) {
+                const { inquiry_id, seller_id } = laDetails[0];
+                await pool.query(
+                    "UPDATE inquiries SET status = 'Closed', closed_at = NOW(), won_seller_id = ? WHERE id = ?",
+                    [seller_id, inquiry_id]
+                );
+            }
+        }
 
         // Notify Admin if lead is fulfilled or rejected
         if (status === 'fulfilled' || status === 'rejected') {

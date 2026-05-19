@@ -62,7 +62,7 @@ export const getAllBlogsAdmin = async (req, res) => {
 // POST create blog
 export const createBlog = async (req, res) => {
   try {
-    const { title, excerpt, content, author, category, tags, status, image_url } = req.body;
+    const { title, excerpt, content, author, category, tags, status, image_url, meta_title, meta_description, meta_keywords, custom_slug } = req.body;
 
     if (!title || !content) {
       return res.status(400).json({ success: false, message: 'Title and content are required' });
@@ -81,18 +81,19 @@ export const createBlog = async (req, res) => {
       image_type = 'url';
     }
 
-    // Generate unique slug
-    let slug = generateSlug(title);
+    // Generate unique slug (allow custom_slug override)
+    let slug = custom_slug ? generateSlug(custom_slug) : generateSlug(title);
     const [existing] = await pool.query('SELECT id FROM blogs WHERE slug = ?', [slug]);
     if (existing.length) {
       slug = `${slug}-${Date.now()}`;
     }
 
     const [result] = await pool.query(
-      `INSERT INTO blogs (title, slug, excerpt, content, cover_image, image_type, author, category, tags, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO blogs (title, slug, excerpt, content, cover_image, image_type, author, category, tags, meta_title, meta_description, meta_keywords, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [title, slug, excerpt || '', content, cover_image, image_type,
-       author || 'PackagingBazaar Team', category || 'General', tags || '', status || 'draft']
+       author || 'PackagingBazaar Team', category || 'General', tags || '', 
+       meta_title || null, meta_description || null, meta_keywords || null, status || 'draft']
     );
 
     res.status(201).json({ success: true, message: 'Blog created', id: result.insertId, slug });
@@ -106,7 +107,7 @@ export const createBlog = async (req, res) => {
 export const updateBlog = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, excerpt, content, author, category, tags, status, image_url } = req.body;
+    const { title, excerpt, content, author, category, tags, status, image_url, meta_title, meta_description, meta_keywords, custom_slug } = req.body;
 
     const [existing] = await pool.query('SELECT * FROM blogs WHERE id = ?', [id]);
     if (!existing.length) return res.status(404).json({ success: false, message: 'Blog not found' });
@@ -122,19 +123,24 @@ export const updateBlog = async (req, res) => {
       image_type = 'url';
     }
 
-    // Regenerate slug if title changed
+    // Regenerate slug if title or custom_slug changed
     let slug = existing[0].slug;
-    if (title && title !== existing[0].title) {
+    if (custom_slug && custom_slug !== existing[0].slug) {
+      slug = generateSlug(custom_slug);
+      const [dup] = await pool.query('SELECT id FROM blogs WHERE slug = ? AND id != ?', [slug, id]);
+      if (dup.length) slug = `${slug}-${Date.now()}`;
+    } else if (title && title !== existing[0].title && !custom_slug) {
       slug = generateSlug(title);
       const [dup] = await pool.query('SELECT id FROM blogs WHERE slug = ? AND id != ?', [slug, id]);
       if (dup.length) slug = `${slug}-${Date.now()}`;
     }
 
     await pool.query(
-      `UPDATE blogs SET title=?, slug=?, excerpt=?, content=?, cover_image=?, image_type=?, author=?, category=?, tags=?, status=?, updated_at=NOW()
+      `UPDATE blogs SET title=?, slug=?, excerpt=?, content=?, cover_image=?, image_type=?, author=?, category=?, tags=?, meta_title=?, meta_description=?, meta_keywords=?, status=?, updated_at=NOW()
        WHERE id=?`,
       [title, slug, excerpt || '', content, cover_image, image_type,
-       author || 'PackagingBazaar Team', category || 'General', tags || '', status || 'draft', id]
+       author || 'PackagingBazaar Team', category || 'General', tags || '', 
+       meta_title || null, meta_description || null, meta_keywords || null, status || 'draft', id]
     );
 
     res.json({ success: true, message: 'Blog updated', slug });

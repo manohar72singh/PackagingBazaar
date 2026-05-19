@@ -19,6 +19,36 @@ const AdminBroadcast = () => {
     includeEmail: false
   });
 
+  const PRESET_TEMPLATES = [
+    {
+      name: "⚡ Seller Lead Dispatch",
+      title: "New Premium B2B Lead Alert!",
+      message: "A verified bulk inquiry has been added matching your production capabilities. Head over to your Leads panel to inspect the match strength score and claim compatibility rights.",
+      link: "/seller/leads",
+      role: "seller",
+      type: "success",
+      includeEmail: true
+    },
+    {
+      name: "🛠️ Scheduled Maintenance",
+      title: "Marketplace Server Routine Maintenance Schedule",
+      message: "Please note that our platform will undergo a scheduled system optimization check on Sunday from 02:00 AM to 04:00 AM IST. Some services may experience temporary interruptions.",
+      link: "/",
+      role: "all",
+      type: "warning",
+      includeEmail: false
+    },
+    {
+      name: "📦 Stock Verification Request",
+      title: "Supplier Stock & Catalog Verification Needed",
+      message: "Ensure your active list of BOPP films, Corrugated Boxes, and packaging rolls has accurate pricing. Keep your stocks updated to increase lead matching accuracy score by up to +15%!",
+      link: "/seller/products",
+      role: "seller",
+      type: "info",
+      includeEmail: false
+    }
+  ];
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.title || !formData.message) {
@@ -218,6 +248,33 @@ const AdminBroadcast = () => {
                  </span>
                </div>
             </div>
+          </div>
+
+          {/* Interactive Preset Action Templates Card */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm space-y-4">
+             <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+               Interactive Presets
+             </h4>
+             <div className="grid grid-cols-1 gap-2.5">
+               {PRESET_TEMPLATES.map((tmpl, idx) => (
+                 <button
+                   key={idx}
+                   type="button"
+                   onClick={() => setFormData({
+                     title: tmpl.title,
+                     message: tmpl.message,
+                     role: tmpl.role,
+                     type: tmpl.type,
+                     link: tmpl.link,
+                     includeEmail: tmpl.includeEmail
+                   })}
+                   className="text-left w-full p-3 rounded-xl border border-gray-100 bg-gray-50/50 hover:border-blue-500 hover:bg-blue-50/30 transition-all flex flex-col gap-1 group"
+                 >
+                   <span className="text-[11px] font-black text-gray-800 group-hover:text-blue-600 transition-colors uppercase tracking-tight">{tmpl.name}</span>
+                   <span className="text-[9px] text-gray-400 line-clamp-1 font-semibold">{tmpl.title}</span>
+                 </button>
+               ))}
+             </div>
           </div>
 
           <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100 flex gap-3">
