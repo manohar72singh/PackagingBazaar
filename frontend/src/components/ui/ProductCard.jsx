@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ShoppingCart, Eye, Send, ShieldCheck } from "lucide-react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { ShoppingCart, Eye, Send, ChevronLeft, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../../context/CartContext";
 import Badge from "./Badge";
@@ -17,14 +17,47 @@ export default function ProductCard({ product, onInquiry }) {
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const [showOptions, setShowOptions] = useState(false);
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+  const intervalRef = useRef(null);
   const [specs, setSpecs] = useState({
     thickness: product.thickness || "",
     width: product.width || "",
     quantity: ""
   });
-  
-  const categoryName = product.category_name || "BOPP"; 
+
+  const categoryName = product.category_name || "BOPP";
   const grad = categoryColors[categoryName] || "from-gray-50 to-gray-100";
+
+  // Build images list: main image + additional_images
+  const getAdditionalImages = () => {
+    if (!product.additional_images) return [];
+    if (Array.isArray(product.additional_images)) return product.additional_images;
+    try { return JSON.parse(product.additional_images); } catch { return []; }
+  };
+  const images = [product.image_url, ...getAdditionalImages()].filter(Boolean);
+  const hasMultiple = images.length > 1;
+
+  // Auto-play carousel every 3 seconds, pause on hover
+  useEffect(() => {
+    if (!hasMultiple || isHovered) return;
+    intervalRef.current = setInterval(() => {
+      setCurrentSlide(prev => (prev + 1) % images.length);
+    }, 3000);
+    return () => clearInterval(intervalRef.current);
+  }, [hasMultiple, isHovered, images.length]);
+
+  const goNext = useCallback((e) => {
+    e.stopPropagation();
+    clearInterval(intervalRef.current);
+    setCurrentSlide(prev => (prev + 1) % images.length);
+  }, [images.length]);
+
+  const goPrev = useCallback((e) => {
+    e.stopPropagation();
+    clearInterval(intervalRef.current);
+    setCurrentSlide(prev => (prev - 1 + images.length) % images.length);
+  }, [images.length]);
 
   const handleImageClick = () => {
     const sellerParam = product.seller_id ? `?sellerId=${product.seller_id}` : "";
@@ -33,34 +66,33 @@ export default function ProductCard({ product, onInquiry }) {
 
   const handleAddToCart = (e) => {
     e.stopPropagation();
-    if (!showOptions) {
-      setShowOptions(true);
-      return;
-    }
-
+    if (!showOptions) { setShowOptions(true); return; }
     addToCart({
       ...product,
       selected_thickness: specs.thickness,
       selected_width: specs.width,
       selected_brand: product.brand || "",
-      selected_quantity: specs.quantity  // This becomes inquiry_quantity in cart
+      selected_quantity: specs.quantity
     });
     setShowOptions(false);
   };
 
   return (
     <div className={`bg-white rounded-2xl border border-black/[0.07] overflow-hidden transition-all duration-200 group flex flex-col h-full relative ${!showOptions ? "hover:-translate-y-1 hover:shadow-xl" : "shadow-2xl"}`}>
-      {/* Image area */}
+      {/* Image / Carousel area */}
       <div
-        className={`bg-gradient-to-br ${grad} h-36 sm:h-48 md:h-52 flex items-center justify-center relative cursor-pointer overflow-hidden shrink-0`}
+        className={`bg-gradient-to-br ${grad} h-36 sm:h-48 md:h-52 flex items-center justify-center relative cursor-pointer overflow-hidden shrink-0 border-b border-black/[0.1]`}
         onClick={handleImageClick}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
+        {/* Badge */}
         <div className="absolute top-2 left-2 sm:top-3 sm:left-3 z-20">
-          <Badge tag={product.tag_name} /> 
+          <Badge tag={product.tag_name} />
         </div>
-        
-        {/* Hover Actions */}
-        <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-all">
+
+        {/* Eye button */}
+        <div className="absolute top-3 right-3 z-20 opacity-0 group-hover:opacity-100 transition-all">
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -73,24 +105,45 @@ export default function ProductCard({ product, onInquiry }) {
             <Eye size={14} />
           </button>
         </div>
-        
-        {/* Removed Image Badges for a cleaner look as requested */}
 
+        {/* Carousel images */}
         <div className="relative w-full h-full z-10">
           <img
-            src={getImageUrl(product.image_url)} 
-            alt={product.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-all duration-500"
+            key={currentSlide}
+            src={getImageUrl(images[currentSlide] || product.image_url)}
+            alt={`${product.name} ${currentSlide + 1}`}
+            className="w-full h-full object-cover transition-opacity duration-300"
           />
         </div>
+
+        {/* Carousel indicators — only if multiple images */}
+        {hasMultiple && (
+          <>
+            {/* Dot indicators */}
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1">
+              {images.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={(e) => { e.stopPropagation(); setCurrentSlide(i); }}
+                  className={`rounded-full transition-all duration-200 ${
+                    i === currentSlide
+                      ? "w-4 h-1.5 bg-white"
+                      : "w-1.5 h-1.5 bg-white/50 hover:bg-white/80"
+                  }`}
+                />
+              ))}
+            </div>
+          </>
+        )}
 
         {/* Category chip */}
         <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 z-20">
           <span className="text-[8px] sm:text-[10px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-full bg-white/80 backdrop-blur-sm text-ink2 border border-black/[0.07]">
-            {categoryName} · {product.subcategory_name} 
+            {categoryName} · {product.subcategory_name}
           </span>
         </div>
       </div>
+
 
       {/* Info */}
       <div className="p-3 sm:p-4 lg:p-5 flex flex-col flex-1">

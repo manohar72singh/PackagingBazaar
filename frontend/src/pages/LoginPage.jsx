@@ -154,10 +154,12 @@ export default function LoginPage() {
 
               {mode === "login" ? (
                 <form onSubmit={handleLogin} className="space-y-4">
-                  <InputField label="Email Address" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter email" icon={<MailIcon />} />
+                  <InputField label="Email or Mobile Number" type="text" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter email or 10-digit mobile number" icon={<MailIcon />} />
                   <div>
                     <InputField label="Password" type={showPw ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter password" icon={<LockIcon />} rightElement={<button type="button" onClick={() => setShowPw(!showPw)} className="text-gray-400 hover:text-[#e8511a]">{showPw ? <EyeOffIcon /> : <EyeIcon />}</button>} />
-                    <div className="flex justify-end mt-1.5"><a href="#" className="text-xs text-[#e8511a] font-medium hover:underline">Forgot password?</a></div>
+                    <div className="flex justify-end mt-1.5">
+                      <button type="button" onClick={() => navigate("/forgot-password")} className="text-xs text-[#e8511a] font-medium hover:underline">Forgot password?</button>
+                    </div>
                   </div>
                   <div className="bg-[#fff7f3] border border-[#fdd5c0] rounded-xl px-3 py-2.5 flex items-start gap-2">
                     <svg viewBox="0 0 24 24" fill="none" stroke="#e8511a" strokeWidth={2} className="w-4 h-4 mt-0.5 shrink-0"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>

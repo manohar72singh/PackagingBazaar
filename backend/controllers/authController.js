@@ -72,9 +72,13 @@ export const register = async (req, res) => {
 
 // 2. SIGN IN (Login)
 export const login = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, emailOrMobile, mobile, password } = req.body;
   try {
-    const [rows] = await pool.query("SELECT * FROM users WHERE email = ?", [email]);
+    const loginIdentifier = (emailOrMobile || email || mobile || "").trim();
+    const [rows] = await pool.query(
+      "SELECT * FROM users WHERE email = ? OR mobile = ?",
+      [loginIdentifier, loginIdentifier]
+    );
     const user = rows[0];
 
     if (!user) {
@@ -316,5 +320,86 @@ export const getCurrentUser = async (req, res) => {
   } catch (err) {
     console.error("Error in getCurrentUser:", err);
     res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// 5. FORGOT PASSWORD
+export const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ success: false, message: "Email is required" });
+
+  try {
+    const [users] = await pool.query("SELECT id, name FROM users WHERE email = ?", [email]);
+    if (users.length === 0) {
+      // Don't leak that the email doesn't exist, just return success
+      return res.status(200).json({ success: true, message: "If an account with that email exists, we sent a password reset link." });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
+
+    await pool.query(
+      "UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE email = ?", 
+      [resetToken, resetExpiry, email]
+    );
+
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+    
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+        <h2 style="color: #333; text-align: center;">Reset Your Password</h2>
+        <p style="color: #555; font-size: 16px;">Hi ${users[0].name},</p>
+        <p style="color: #555; font-size: 16px;">We received a request to reset your password for PackagingBazaar. Click the button below to choose a new password.</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${resetUrl}" style="background-color: #000; color: #fff; text-decoration: none; padding: 12px 25px; border-radius: 5px; font-weight: bold; font-size: 16px;">Reset Password</a>
+        </div>
+        <p style="color: #555; font-size: 14px;">This link will expire in 15 minutes. If you did not request a password reset, please ignore this email.</p>
+        <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">PackagingBazaar Team</p>
+      </div>
+    `;
+
+    sendEmail(email, "PackagingBazaar - Password Reset Request", `Reset your password using this link: ${resetUrl}`, emailHtml);
+
+    res.status(200).json({ success: true, message: "Password reset link sent to your email." });
+
+  } catch (error) {
+    console.error("Error in forgotPassword:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+// 6. RESET PASSWORD
+export const resetPassword = async (req, res) => {
+  const { token, newPassword } = req.body;
+  if (!token || !newPassword) {
+    return res.status(400).json({ success: false, message: "Token and new password are required." });
+  }
+
+  if (!validatePassword(newPassword)) {
+    return res.status(400).json({ success: false, message: "Password must be at least 6 characters." });
+  }
+
+  try {
+    const [users] = await pool.query(
+      "SELECT id FROM users WHERE reset_token = ? AND reset_token_expiry > NOW()", 
+      [token]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).json({ success: false, message: "Invalid or expired reset token." });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await pool.query(
+      "UPDATE users SET password = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?",
+      [hashedPassword, users[0].id]
+    );
+
+    res.status(200).json({ success: true, message: "Password has been successfully reset. You can now login." });
+
+  } catch (error) {
+    console.error("Error in resetPassword:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

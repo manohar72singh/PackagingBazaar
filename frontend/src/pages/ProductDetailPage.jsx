@@ -36,6 +36,7 @@ import {
   ShieldCheck,
   Star,
   ChevronRight,
+  FileText,
 } from "lucide-react";
 
 const gradColors = {
@@ -57,19 +58,18 @@ const formatDeliveryTime = (hours) => {
 const DeliveryBadge = ({ hours, timeStr, className = "" }) => {
   const formatted = formatDeliveryTime(hours) || timeStr;
   if (!formatted) return <span className="text-gray-400 font-bold">N/A</span>;
-  
+
   const h = parseInt(hours);
   const isExpress = !isNaN(h) && h <= 24;
   const isStandard = !isNaN(h) && h <= 72;
 
   return (
-    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border font-black uppercase tracking-widest text-[9px] shadow-sm transition-all hover:scale-105 ${
-      isExpress 
-        ? "bg-orange-50 border-orange-100 text-accent shadow-orange-100/50" 
+    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border font-black uppercase tracking-widest text-[9px] shadow-sm transition-all hover:scale-105 ${isExpress
+        ? "bg-orange-50 border-orange-100 text-accent shadow-orange-100/50"
         : isStandard
           ? "bg-blue-50 border-blue-100 text-blue-600 shadow-blue-100/50"
           : "bg-slate-50 border-slate-100 text-slate-600 shadow-slate-100/50"
-    } ${className}`}>
+      } ${className}`}>
       {isExpress ? (
         <Zap size={12} className="fill-current animate-pulse" />
       ) : (
@@ -89,6 +89,7 @@ export default function ProductDetailPage() {
   const { addToCart } = useCart();
 
   const [product, setProduct] = useState(null);
+  const [activeImage, setActiveImage] = useState("");
   const [related, setRelated] = useState([]);
   const [variants, setVariants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -111,6 +112,18 @@ export default function ProductDetailPage() {
         : [...prev, micron]               // add if not selected
     );
   };
+
+  const getAdditionalImages = () => {
+    if (!product || !product.additional_images) return [];
+    if (Array.isArray(product.additional_images)) return product.additional_images;
+    try {
+      return JSON.parse(product.additional_images);
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const imagesList = product ? [product.image_url, ...getAdditionalImages()].filter(Boolean) : [];
 
   useEffect(() => {
     const getDetails = async () => {
@@ -164,6 +177,12 @@ export default function ProductDetailPage() {
     getDetails();
     window.scrollTo(0, 0);
   }, [id, sellerId]);
+
+  useEffect(() => {
+    if (product) {
+      setActiveImage(product.image_url);
+    }
+  }, [product]);
 
   const handleAdd = () => {
     if (product) {
@@ -237,25 +256,62 @@ export default function ProductDetailPage() {
         </nav>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] xl:grid-cols-[1fr_440px] gap-6 items-start">
-          
-          {/* LEFT: Image */}
+
+          {/* LEFT: Image Gallery */}
           <div className="lg:sticky lg:top-4">
-            <div className={`bg-gradient-to-br ${grad} rounded-2xl h-[300px] sm:h-[420px] flex items-center justify-center relative overflow-hidden border border-black/[0.06]`}>
-              <img src={getImageUrl(product.image_url)} alt={product.name} className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
-              <div className="absolute top-3 left-3"><Badge tag={product.tag_name} /></div>
-              {product.is_verified && (
-                <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-white/90 backdrop-blur-sm text-green-600 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border border-green-100 shadow-sm">
-                  <ShieldCheck size={10} /> Verified Seller
+            <div className="flex gap-3">
+
+              {/* Vertical Thumbnail Strip - only show if more than 1 image */}
+              {imagesList.length > 1 && (
+                <div className="flex flex-col gap-2 w-[60px] flex-shrink-0">
+                  {imagesList.map((img, index) => {
+                    const isActive = (activeImage || product.image_url) === img;
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => setActiveImage(img)}
+                        className={`w-[60px] h-[60px] rounded-lg overflow-hidden border-2 bg-white flex-shrink-0 transition-all duration-200 ${
+                          isActive
+                            ? "border-accent shadow-md shadow-accent/20 scale-[1.03]"
+                            : "border-gray-100 opacity-60 hover:opacity-100 hover:border-gray-300"
+                        }`}
+                      >
+                        <img
+                          src={getImageUrl(img)}
+                          alt={`${product.name} ${index + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                    );
+                  })}
                 </div>
               )}
+
+              {/* Main Image Preview */}
+              <div className={`bg-gradient-to-br ${grad} rounded-2xl flex-1 h-[260px] sm:h-[360px] flex items-center justify-center relative overflow-hidden border border-black/[0.06] group`}>
+                <img
+                  key={activeImage || product.image_url}
+                  src={getImageUrl(activeImage || product.image_url)}
+                  alt={product.name}
+                  className="w-full h-full object-cover transition-all duration-300"
+                />
+                <div className="absolute top-3 left-3"><Badge tag={product.tag_name} /></div>
+                {product.is_verified && (
+                  <div className="absolute bottom-3 right-3 flex items-center gap-1 bg-white/90 backdrop-blur-sm text-green-600 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border border-green-100 shadow-sm">
+                    <ShieldCheck size={10} /> Verified Seller
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
 
+
           {/* RIGHT: Info Panel */}
           <div className="flex flex-col gap-4">
-            
+
             {/* Product Title Block */}
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+            <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-md">
               <span className="text-[10px] font-black text-accent uppercase tracking-widest bg-accent/5 px-2.5 py-1 rounded-full border border-accent/10 inline-block mb-3">
                 {product.category_name}{product.subcategory_name && ` · ${product.subcategory_name}`}
               </span>
@@ -271,7 +327,7 @@ export default function ProductDetailPage() {
             </div>
 
             {/* Price Block */}
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+            <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-md">
               <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">Price Range (Approx.)</p>
               <div className="flex items-baseline gap-2 mb-1">
                 <span className="font-syne font-black text-3xl text-gray-900">₹{product.min_price}</span>
@@ -294,7 +350,7 @@ export default function ProductDetailPage() {
             </div>
 
             {/* Specs Table */}
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+            <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-md">
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Product Specifications</p>
               <div className="divide-y divide-gray-50">
                 {[
@@ -314,7 +370,7 @@ export default function ProductDetailPage() {
 
             {/* Applications */}
             {product.applications && product.applications.length > 0 && (
-              <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+              <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-md">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Applications / Used For</p>
                 <div className="flex flex-wrap gap-2">
                   {product.applications.map((a) => (
@@ -327,15 +383,41 @@ export default function ProductDetailPage() {
             )}
 
             {/* Description */}
-            {product.description && (
-              <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Description</p>
-                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{product.description}</p>
+            {(product.description || product.pdf_url) && (
+              <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-md flex flex-col gap-4">
+                {product.description && (
+                  <div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Description</p>
+                    <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{product.description}</p>
+                  </div>
+                )}
+                {product.pdf_url && (
+                  <div className="pt-4 border-t border-gray-50 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-red-50 text-red-500 rounded-xl flex items-center justify-center border border-red-100 shadow-inner">
+                        <FileText size={20} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-black text-slate-800 uppercase tracking-tight">Technical Specifications</p>
+                        <p className="text-[10px] font-semibold text-slate-400">Extra product specifications (PDF)</p>
+                      </div>
+                    </div>
+                    <a
+                      href={getImageUrl(product.pdf_url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      className="px-5 py-2.5 bg-slate-900 hover:bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all hover:scale-105 shadow-md shadow-slate-900/10 flex items-center gap-2"
+                    >
+                      Download PDF
+                    </a>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Customization / Specs Selection */}
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+            <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-md">
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Customize Your Order</p>
               <div className="space-y-4">
                 {/* Thickness - Multi Select */}
@@ -364,11 +446,10 @@ export default function ProductDetailPage() {
                         <button
                           key={m}
                           onClick={() => toggleThickness(val)}
-                          className={`px-3 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
-                            isSelected
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-black border transition-all ${isSelected
                               ? "bg-accent border-accent text-white shadow-sm shadow-accent/20"
                               : "bg-gray-50 border-gray-100 text-gray-500 hover:border-accent/30 hover:bg-orange-50"
-                          }`}
+                            }`}
                         >
                           {m}µ
                         </button>
@@ -409,11 +490,10 @@ export default function ProductDetailPage() {
                       <button
                         key={b}
                         onClick={() => setSelectedBrand(b)}
-                        className={`px-3 py-1.5 rounded-lg text-[11px] font-black border transition-all ${
-                          selectedBrand === b
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-black border transition-all ${selectedBrand === b
                             ? "bg-gray-900 border-gray-900 text-white shadow-sm"
                             : "bg-gray-50 border-gray-100 text-gray-500 hover:border-gray-300 hover:bg-gray-100"
-                        }`}
+                          }`}
                       >
                         {b}
                       </button>
@@ -449,7 +529,7 @@ export default function ProductDetailPage() {
             </div>
 
             {/* CTA Block */}
-            <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+            <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-md">
               <div className="flex flex-col gap-3">
                 <button
                   onClick={() => handleOpenInquiry(product)}
@@ -460,13 +540,12 @@ export default function ProductDetailPage() {
                 <button
                   onClick={handleAdd}
                   disabled={selectedThickness.length === 0 || !selectedWidth || !selectedBrand || !quantity}
-                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm uppercase tracking-widest transition-all border ${
-                    added
+                  className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm uppercase tracking-widest transition-all border ${added
                       ? "bg-green-600 text-white border-green-600"
                       : selectedThickness.length === 0 || !selectedWidth || !selectedBrand || !quantity
                         ? "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed"
                         : "bg-white border-gray-200 text-gray-800 hover:bg-gray-50 active:scale-[0.99]"
-                  }`}
+                    }`}
                 >
                   {added ? <><CheckCircle size={16} /> Added to Cart</> : <><ShoppingCart size={16} /> Add to Cart</>}
                 </button>
@@ -515,7 +594,7 @@ export default function ProductDetailPage() {
                         <td className="py-5 pr-4">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-50 p-1">
-                               <img src={getImageUrl(s.image_url)} alt="" className="w-full h-full object-contain" />
+                              <img src={getImageUrl(s.image_url)} alt="" className="w-full h-full object-contain" />
                             </div>
                             <div>
                               <p className="font-black text-gray-900 text-sm leading-tight">{s.seller_uid || `Seller #${s.seller_id}`}</p>
@@ -531,14 +610,14 @@ export default function ProductDetailPage() {
                               </div>
                             </div>
                             {Number(s.seller_id) === Number(product.seller_id) && Number(s.product_id) === Number(product.id) && (
-                                <span className="bg-accent/10 text-accent text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">Current</span>
+                              <span className="bg-accent/10 text-accent text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">Current</span>
                             )}
                           </div>
                         </td>
                         <td className="py-5 pr-4 text-center">
-                           <span className="text-[10px] font-black bg-slate-100 text-slate-600 px-2 py-1 rounded-md border border-slate-200">
-                              {s.thickness || "N/A"}
-                           </span>
+                          <span className="text-[10px] font-black bg-slate-100 text-slate-600 px-2 py-1 rounded-md border border-slate-200">
+                            {s.thickness || "N/A"}
+                          </span>
                         </td>
                         <td className="py-5 pr-4">
                           <div className="flex items-center gap-1.5 text-xs font-bold text-gray-600">
@@ -559,10 +638,10 @@ export default function ProductDetailPage() {
                           </div>
                         </td>
                         <td className="py-5 pr-4">
-                           <DeliveryBadge hours={s.delivery_hours} className="!text-[8px] !px-2 !py-1" />
+                          <DeliveryBadge hours={s.delivery_hours} className="!text-[8px] !px-2 !py-1" />
                         </td>
                         <td className="py-5 text-right">
-                          <button 
+                          <button
                             onClick={() => {
                               // Use the specific product_id for this seller to get their unique image/specs
                               navigate(`/products/${s.product_id}?sellerId=${s.seller_id}`);
@@ -623,7 +702,7 @@ export default function ProductDetailPage() {
                     />
                     <div className="absolute inset-0 bg-accent/0 group-hover:bg-accent/5 transition-colors duration-500" />
                   </div>
-                  
+
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1.5">
                       <span className="text-[8px] font-black bg-accent text-white px-2 py-0.5 rounded uppercase tracking-tighter shadow-sm shadow-accent/20">
@@ -637,7 +716,7 @@ export default function ProductDetailPage() {
                       {v.name}
                     </h4>
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">
-                       {v.seller_uid || "Verified Manufacturer"}
+                      {v.seller_uid || "Verified Manufacturer"}
                     </p>
                   </div>
 
@@ -686,7 +765,7 @@ export default function ProductDetailPage() {
           product={inquiryProduct}
         />
       </div>
-      
+
       {/* Sticky Mobile Bottom Quote CTA Bar */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-t border-gray-100 px-6 py-4 flex items-center justify-between shadow-2xl animate-slideUp">
         <div className="min-w-0">

@@ -26,7 +26,8 @@ import {
   fetchProductGroups, 
   createProductGroup, 
   addProductForSeller, 
-  uploadProductImage 
+  uploadProductImage,
+  uploadProductPdf 
 } from "../../services/adminServices";
 import { fetchUniqueProductNames } from "../../services/productServices";
 import { useNotification } from "../../context/NotificationContext";
@@ -72,6 +73,7 @@ const StepIndicator = ({ current }) => (
 export default function AdminAddProduct() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [pdfUploading, setPdfUploading] = useState(false);
   const [formStep, setFormStep] = useState(0);
   const [productSubmitted, setProductSubmitted] = useState(false);
   const [search, setSearch] = useState("");
@@ -114,6 +116,8 @@ export default function AdminAddProduct() {
     applications: [],
     customApplications: "",
     img: "",
+    pdf_url: "",
+    additional_images: [],
   });
 
   // Auto-generate Product ID (PB-xxx) and Variant Group ID
@@ -283,6 +287,25 @@ export default function AdminAddProduct() {
     }
   };
 
+  const handlePdfUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.type !== "application/pdf") return notifyError("Only PDF files are allowed");
+    if (file.size > 10 * 1024 * 1024) return notifyError("Max 10MB");
+    setPdfUploading(true);
+    try {
+      const res = await uploadProductPdf(file);
+      if (res.success) {
+        setFormVal("pdf_url", res.pdfUrl);
+        notifySuccess("PDF Upload successful");
+      }
+    } catch (err) {
+      notifyError("PDF Upload failed");
+    } finally {
+      setPdfUploading(false);
+    }
+  };
+
   if (productSubmitted) {
     return (
       <div className="min-h-[400px] flex flex-col items-center justify-center py-12 bg-white rounded-[3rem] border border-gray-100 shadow-sm animate-fadeIn">
@@ -304,7 +327,7 @@ export default function AdminAddProduct() {
                 subcategory: "", customSubcategory: "", tag: "", customTag: "", thickness: "",
                 width: "", minPrice: "", maxPrice: "", unit: "kg", minOrder: "", stock: "",
                 deliveryTime: "", groupKey: "", newGroupName: "", newGroupId: "", productCode: "",
-                description: "", applications: [], customApplications: "", img: "",
+                description: "", applications: [], customApplications: "", img: "", pdf_url: "", additional_images: [],
               });
               loadInitialData(); // Re-fetch groups to show the one just created
             }}
@@ -546,6 +569,66 @@ export default function AdminAddProduct() {
                     </div>
                   </Field>
                 </div>
+                
+                <div className="pt-4 border-t border-black/[0.04]">
+                  <Field label="Additional Gallery Images (Max 3)" hint="Add specifications or product angles">
+                    <div className="grid grid-cols-3 gap-4 mt-2">
+                      {[0, 1, 2].map((index) => {
+                        const imgUrl = form.additional_images?.[index];
+                        return (
+                          <div key={index} className="relative aspect-square rounded-2xl border-2 border-dashed border-black/[0.1] bg-slate-50/50 flex flex-col items-center justify-center overflow-hidden hover:border-accent/40 transition-colors group">
+                            {imgUrl ? (
+                              <>
+                                <img src={getImageUrl(imgUrl)} className="w-full h-full object-cover animate-fadeIn" alt="" />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...(form.additional_images || [])];
+                                    updated.splice(index, 1);
+                                    setFormVal("additional_images", updated);
+                                  }}
+                                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-slate-900/80 hover:bg-slate-900 text-white flex items-center justify-center transition-colors shadow-lg z-10 animate-scaleIn"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </>
+                            ) : (
+                              <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer p-2 text-center hover:bg-slate-100/50 transition-colors">
+                                <Plus size={18} className="text-slate-400 group-hover:text-accent transition-colors" />
+                                <span className="text-[8px] font-bold text-slate-400 mt-1 uppercase tracking-wider">Slot {index + 1}</span>
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  accept="image/*"
+                                  onChange={async (e) => {
+                                    const file = e.target.files[0];
+                                    if (!file) return;
+                                    if (file.size > 5 * 1024 * 1024) return notifyError("Max 5MB");
+                                    setUploading(true);
+                                    try {
+                                      const res = await uploadProductImage(file);
+                                      if (res.success) {
+                                        const updated = [...(form.additional_images || [])];
+                                        updated[index] = res.imageUrl;
+                                        setFormVal("additional_images", updated);
+                                        notifySuccess(`Slot ${index + 1} uploaded`);
+                                      }
+                                    } catch (err) {
+                                      notifyError("Upload failed");
+                                    } finally {
+                                      setUploading(false);
+                                    }
+                                  }}
+                                />
+                              </label>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Field>
+                </div>
+
                 <div className="pt-4">
                    <Field label="Inventory Level (KG)" required>
                     <input className={inputCls + " h-14 font-black"} type="number" placeholder="STOCK QUANTITY" value={form.stock || ""} onChange={(e) => setFormVal("stock", e.target.value)} />
@@ -564,6 +647,16 @@ export default function AdminAddProduct() {
                 </div>
                 <Field label="Commercial Description" required>
                   <textarea className={inputCls + " h-36 pt-4 text-xs font-bold leading-relaxed"} placeholder="Highlights, USPs, and technical usage..." value={form.description || ""} onChange={(e) => setFormVal("description", e.target.value)} />
+                </Field>
+                <Field label="Technical Specifications Document (PDF)" hint="Attach extra details (Max 10MB)">
+                  <div className="flex gap-4">
+                    <input className={inputCls + " h-14 flex-1"} placeholder="PASTE PDF URL HERE..." value={form.pdf_url || ""} onChange={(e) => setFormVal("pdf_url", e.target.value)} />
+                    <label className="shrink-0 flex items-center justify-center w-14 h-14 bg-slate-900 text-white rounded-2xl cursor-pointer hover:bg-black transition-all shadow-xl shadow-black/20 group">
+                      <FileText size={20} className="group-hover:scale-110 transition-transform" />
+                      <input type="file" className="hidden" accept="application/pdf" onChange={handlePdfUpload} />
+                    </label>
+                  </div>
+                  {pdfUploading && <span className="text-xs text-accent animate-pulse font-bold">Uploading PDF...</span>}
                 </Field>
                 <Field label="Target Applications" required hint="Press Enter to add multiple">
                    <div className="flex gap-2 mb-4">

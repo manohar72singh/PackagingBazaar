@@ -78,7 +78,7 @@ export const getAllSellers = async (req, res) => {
              s.created_at, s.status
       FROM users u
       JOIN sellers s ON u.id = s.user_id
-      WHERE u.role = 'seller' AND s.is_verified = 1
+      WHERE u.role = 'seller' AND s.is_verified = 1 AND s.status != 'deleted'
       ORDER BY s.created_at DESC
       LIMIT ? OFFSET ?
     `;
@@ -88,7 +88,7 @@ export const getAllSellers = async (req, res) => {
     const [[{ total }]] = await pool.query(`
       SELECT COUNT(*) as total FROM users u 
       JOIN sellers s ON u.id = s.user_id 
-      WHERE u.role = 'seller' AND s.is_verified = 1
+      WHERE u.role = 'seller' AND s.is_verified = 1 AND s.status != 'deleted'
     `);
 
     res.status(200).json({ 
@@ -193,15 +193,32 @@ export const rejectSeller = async (req, res) => {
       }
     }
 
-    await connection.query("DELETE FROM sellers WHERE user_id = ?", [id]);
-    const [result] = await connection.query("DELETE FROM users WHERE id = ?", [id]);
+    // 1. Get the seller's id
+    const [sellerRows] = await connection.query("SELECT id FROM sellers WHERE user_id = ?", [id]);
+    if (sellerRows.length > 0) {
+      const sellerId = sellerRows[0].id;
+      
+      // 2. Fetch and delete all products of this seller
+      const [products] = await connection.query("SELECT id FROM products WHERE seller_id = ?", [sellerId]);
+      for (const p of products) {
+        await connection.query("DELETE FROM product_stocks WHERE product_id = ?", [p.id]);
+        await connection.query("DELETE FROM seller_products WHERE product_id = ?", [p.id]);
+        await connection.query("DELETE FROM product_application_mapping WHERE product_id = ?", [p.id]);
+        await connection.query("DELETE FROM product_reviews WHERE product_id = ?", [p.id]);
+        await connection.query("DELETE FROM products WHERE id = ?", [p.id]);
+      }
+    }
+
+    // 3. Safe delete (soft delete) the seller and user
+    await connection.query("UPDATE sellers SET status = 'deleted', is_verified = 0 WHERE user_id = ?", [id]);
+    const [result] = await connection.query("UPDATE users SET is_verified = 0 WHERE id = ?", [id]);
     
     if (result.affectedRows === 0) {
       await connection.rollback();
       return res.status(404).json({ success: false, message: "User not found." });
     }
     await connection.commit();
-    res.status(200).json({ success: true, message: "Seller deleted and notified." });
+    res.status(200).json({ success: true, message: "Seller safe-deleted and notified." });
   } catch (error) {
     await connection.rollback();
     console.error("Error rejecting seller:", error);
@@ -226,9 +243,14 @@ export const getAllUsers = async (req, res) => {
              s.company_name, s.seller_uid, s.city, s.state, s.business_type
       FROM users u
       LEFT JOIN sellers s ON u.id = s.user_id
-      WHERE u.id != ?
+      WHERE u.id != ? AND (s.status IS NULL OR s.status != 'deleted')
     `;
-    let countQuery = "SELECT COUNT(*) as total FROM users WHERE id != ?";
+    let countQuery = `
+      SELECT COUNT(*) as total 
+      FROM users u
+      LEFT JOIN sellers s ON u.id = s.user_id
+      WHERE u.id != ? AND (s.status IS NULL OR s.status != 'deleted')
+    `;
     const params = [req.user.id];
     const countParams = [req.user.id];
 
@@ -278,11 +300,53 @@ export const updateUser = async (req, res) => {
 // 7. Delete User
 export const deleteUser = async (req, res) => {
   const { id } = req.params;
+  const connection = await pool.getConnection();
   try {
-    await pool.query("DELETE FROM users WHERE id = ?", [id]);
+    await connection.beginTransaction();
+
+    // 1. Fetch user role to check if they are a seller
+    const [userRows] = await connection.query("SELECT role FROM users WHERE id = ?", [id]);
+    if (userRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    const user = userRows[0];
+    if (user.role === "seller") {
+      // 2. Get the seller's id
+      const [sellerRows] = await connection.query("SELECT id FROM sellers WHERE user_id = ?", [id]);
+      if (sellerRows.length > 0) {
+        const sellerId = sellerRows[0].id;
+        
+        // 3. Fetch and delete all products of this seller
+        const [products] = await connection.query("SELECT id FROM products WHERE seller_id = ?", [sellerId]);
+        for (const p of products) {
+          await connection.query("DELETE FROM product_stocks WHERE product_id = ?", [p.id]);
+          await connection.query("DELETE FROM seller_products WHERE product_id = ?", [p.id]);
+          await connection.query("DELETE FROM product_application_mapping WHERE product_id = ?", [p.id]);
+          await connection.query("DELETE FROM product_reviews WHERE product_id = ?", [p.id]);
+          await connection.query("DELETE FROM products WHERE id = ?", [p.id]);
+        }
+        
+        // 4. Soft delete seller profile
+        await connection.query("UPDATE sellers SET status = 'deleted', is_verified = 0 WHERE user_id = ?", [id]);
+      }
+      
+      // 5. Soft delete user profile
+      await connection.query("UPDATE users SET is_verified = 0 WHERE id = ?", [id]);
+    } else {
+      // For regular users, hard delete is fine
+      await connection.query("DELETE FROM users WHERE id = ?", [id]);
+    }
+
+    await connection.commit();
     res.status(200).json({ success: true, message: "User deleted." });
   } catch (error) {
+    await connection.rollback();
+    console.error("Error in deleteUser:", error);
     res.status(500).json({ success: false, message: "Server Error" });
+  } finally {
+    connection.release();
   }
 };
 
@@ -1342,7 +1406,7 @@ export const addProductForSeller = async (req, res) => {
   const { 
     name, display_name, product_group_id, category, subcategory, tag, thickness, width, 
     minPrice, maxPrice, unit, description, img, stock, minOrder, applications,
-    delivery_hours, payment_terms, color, productType, productCode
+    delivery_hours, payment_terms, color, productType, productCode, pdf_url, additional_images
   } = req.body;
 
   const parsedHours = parseInt(delivery_hours);
@@ -1403,11 +1467,11 @@ export const addProductForSeller = async (req, res) => {
     console.log(`🚀 Creating New Product Record for Seller: ${sellerId}`);
     const [productResult] = await connection.query(
       `INSERT INTO products 
-       (product_group_id, sub_category_id, tag_id, seller_id, name, display_name, group_key, product_code, thickness, width, color, product_type, unit, description, image_url, applications) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (product_group_id, sub_category_id, tag_id, seller_id, name, display_name, group_key, product_code, thickness, width, color, product_type, unit, description, image_url, applications, pdf_url, additional_images) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         product_group_id || null, subCategoryId, resolvedTagId || null, sellerId, name, display_name, finalGroupKey, productCode, thickness, width, color, productType,
-        unit || 'kg', description, img, JSON.stringify(applications || [])
+        unit || 'kg', description, img, JSON.stringify(applications || []), pdf_url || null, JSON.stringify(additional_images || [])
       ]
     );
     let productId = productResult.insertId;
@@ -1466,6 +1530,25 @@ export const uploadImage = async (req, res) => {
   } catch (error) {
     console.error("Upload error:", error);
     res.status(500).json({ success: false, message: "Failed to upload image" });
+  }
+};
+
+export const uploadPdf = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No PDF file uploaded" });
+    }
+
+    const pdfUrl = `/uploads/product_pdfs/${req.file.filename}`;
+    
+    res.status(200).json({
+      success: true,
+      message: "PDF uploaded successfully",
+      pdfUrl: pdfUrl
+    });
+  } catch (error) {
+    console.error("Upload PDF error:", error);
+    res.status(500).json({ success: false, message: "Failed to upload PDF" });
   }
 };
 
@@ -1934,7 +2017,7 @@ export const bulkUploadProducts = async (req, res) => {
           Category, SubCategory, Tag, ProductName, DisplayName, 
           Thickness, Width, Color, ProductType, ProductCode, 
           Unit, MinPrice, MaxPrice, Stock, MOQ, DeliveryHours, 
-          Description, ImageName, Applications
+          Description, ImageName, AdditionalImages, Applications
         } = row;
 
         if (!Category || !SubCategory || !ProductName) continue;
@@ -1960,6 +2043,22 @@ export const bulkUploadProducts = async (req, res) => {
           }
         }
 
+        // Process AdditionalImages (comma separated)
+        let finalAdditionalImages = [];
+        if (AdditionalImages && AdditionalImages.trim()) {
+          const imgList = AdditionalImages.split(',').map(s => s.trim()).filter(Boolean);
+          for (const imgVal of imgList) {
+            if (imgVal.startsWith('http://') || imgVal.startsWith('https://') || imgVal.startsWith('/')) {
+              finalAdditionalImages.push(imgVal);
+            } else {
+              const matchedImg = imageFiles.find(f => f.originalname === imgVal);
+              if (matchedImg) {
+                finalAdditionalImages.push(`/uploads/product_images/${matchedImg.filename}`);
+              }
+            }
+          }
+        }
+
         // group_key logic
         const catPart = Category ? Category.toString().toUpperCase().replace(/\s+/g, '_') : 'PRD';
         const colorPart = Color ? Color.toString().toUpperCase().replace(/\s+/g, '_') : 'NA';
@@ -1970,9 +2069,9 @@ export const bulkUploadProducts = async (req, res) => {
         // Insert Master Product
         const [pResult] = await connection.query(
           `INSERT INTO products 
-           (sub_category_id, tag_id, seller_id, name, display_name, group_key, product_code, thickness, width, color, product_type, unit, description, image_url, applications) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [subCatId, tagId || null, sellerId, ProductName, DisplayName || ProductName, groupKey, ProductCode || null, Thickness || null, Width || null, Color || null, ProductType || null, Unit || 'kg', Description || null, finalImageUrl, JSON.stringify(Applications ? Applications.split(',') : [])]
+           (sub_category_id, tag_id, seller_id, name, display_name, group_key, product_code, thickness, width, color, product_type, unit, description, image_url, additional_images, applications) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [subCatId, tagId || null, sellerId, ProductName, DisplayName || ProductName, groupKey, ProductCode || null, Thickness || null, Width || null, Color || null, ProductType || null, Unit || 'kg', Description || null, finalImageUrl, JSON.stringify(finalAdditionalImages), JSON.stringify(Applications ? Applications.split(',') : [])]
         );
         const productId = pResult.insertId;
 

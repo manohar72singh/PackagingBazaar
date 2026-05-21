@@ -5,7 +5,7 @@ import {
   getAllProductsAdmin, getDashboardStats, getAnalyticsStats, getAllOrdersAdmin,
   getUserOrdersAdmin, getSellerOrdersAdmin, getSellerProductsAdmin,
   getSellersWithOrdersAdmin, getAllInquiriesAdmin, updateInquiryStatus, toggleHotDeal, toggleTrending,
-  getRecommendedSellers, addProductForSeller, uploadImage, updateSellerStatus,
+  getRecommendedSellers, addProductForSeller, uploadImage, uploadPdf, updateSellerStatus,
   addSellerAdmin, updateSellerDetailsAdmin,
   createCategory, deleteCategory, createSubCategory, deleteSubCategory,
   getInquiryAssignedSellers, exportDataAdmin, bulkUploadProducts,
@@ -43,6 +43,7 @@ router.patch("/products/:id/hot-deal", verifyToken, isAdmin, toggleHotDeal);
 router.patch("/products/:id/trending", verifyToken, isAdmin, toggleTrending);
 router.post("/products/seller/:sellerUserId", verifyToken, isAdmin, addProductForSeller);
 router.post('/upload-image', verifyToken, isAdmin, upload.single('product_image'), uploadImage);
+router.post('/upload-pdf', verifyToken, isAdmin, upload.single('product_pdf'), uploadPdf);
 router.delete("/products/:id", verifyToken, isAdmin, deleteProduct);
 
 // --- Sales Management ---

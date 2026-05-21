@@ -14,6 +14,8 @@ const storage = multer.diskStorage({
       folder = 'gst_certificates';
     } else if (file.fieldname === 'product_image' || file.fieldname === 'images') {
       folder = 'product_images';
+    } else if (file.fieldname === 'product_pdf') {
+      folder = 'product_pdfs';
     } else if (file.fieldname === 'csvFile') {
       folder = 'csv_uploads';
     } else if (file.fieldname === 'cover_image') {
@@ -31,6 +33,7 @@ const storage = multer.diskStorage({
     let prefix = 'file-';
     if (file.fieldname === 'product_image' || file.fieldname === 'images') prefix = 'prod-';
     else if (file.fieldname === 'gst_certificate') prefix = 'gst-';
+    else if (file.fieldname === 'product_pdf') prefix = 'pdf-';
     else if (file.fieldname === 'csvFile') prefix = 'csv-';
     cb(null, prefix + uniqueSuffix + path.extname(file.originalname));
   }

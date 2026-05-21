@@ -326,7 +326,9 @@ export const createProduct = async (req, res) => {
       color,
       productType,
       deliveryTime,
-      groupKey
+      groupKey,
+      pdf_url,
+      additional_images
     } = req.body;
 
     // Prices: Standardize to min_price and max_price for the listing page
@@ -373,8 +375,8 @@ export const createProduct = async (req, res) => {
     const [productResult] = await pool.query(
       `INSERT INTO products 
        (seller_id, sub_category_id, tag_id, name, display_name, thickness, width, 
-        price, min_price, max_price, unit, description, image_url, color, product_type, delivery_time, group_key, product_group_id) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        price, min_price, max_price, unit, description, image_url, color, product_type, delivery_time, group_key, product_group_id, pdf_url, additional_images) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         sellerId,
         subCategoryId,
@@ -393,7 +395,9 @@ export const createProduct = async (req, res) => {
         productType || null,
         deliveryTime || null,
         groupKey || null,
-        resolvedGroupId
+        resolvedGroupId,
+        pdf_url || null,
+        JSON.stringify(additional_images || [])
       ],
     );
 
@@ -466,7 +470,9 @@ export const updateProduct = async (req, res) => {
       color,
       productType,
       deliveryTime,
-      groupKey
+      groupKey,
+      pdf_url,
+      additional_images
     } = req.body;
 
     const minPrice = parseFloat(price);
@@ -504,7 +510,7 @@ export const updateProduct = async (req, res) => {
       `UPDATE products 
        SET sub_category_id = ?, tag_id = ?, name = ?, display_name = ?, thickness = ?, 
            width = ?, price = ?, min_price = ?, max_price = ?, unit = ?, description = ?, image_url = ?,
-           color = ?, product_type = ?, delivery_time = ?, group_key = ?, product_group_id = ?
+           color = ?, product_type = ?, delivery_time = ?, group_key = ?, product_group_id = ?, pdf_url = ?, additional_images = ?
        WHERE id = ?`,
       [
         subCategoryId,
@@ -524,6 +530,8 @@ export const updateProduct = async (req, res) => {
         deliveryTime || null,
         groupKey || null,
         resolvedGroupId,
+        pdf_url || null,
+        JSON.stringify(additional_images || []),
         productId,
       ],
     );

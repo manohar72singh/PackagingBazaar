@@ -202,6 +202,15 @@ export const uploadProductImage = async (file) => {
   return response.data;
 };
 
+export const uploadProductPdf = async (file) => {
+  const formData = new FormData();
+  formData.append('product_pdf', file);
+  const response = await API.post(`/admin/upload-pdf`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data;
+};
+
 // --- Master Data ---
 export const fetchCategories = async () => {
   const response = await API.get("/categories");

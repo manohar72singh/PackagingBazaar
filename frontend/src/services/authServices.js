@@ -25,3 +25,15 @@ export const fetchUserData = async () => {
   const response = await API.get("/auth/me");
   return response.data;
 };
+
+// 7. Forgot Password
+export const forgotPasswordAPI = async (email) => {
+  const response = await API.post("/auth/forgot-password", { email });
+  return response.data;
+};
+
+// 8. Reset Password
+export const resetPasswordAPI = async (token, newPassword) => {
+  const response = await API.post("/auth/reset-password", { token, newPassword });
+  return response.data;
+};

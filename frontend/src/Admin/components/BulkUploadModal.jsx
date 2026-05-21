@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Upload, Download, FileText, Image, CheckCircle2, AlertTriangle, RefreshCcw, ArrowRight, Sparkles } from 'lucide-react';
+import { X, Upload, Download, FileText, Image, CheckCircle2, AlertTriangle, RefreshCcw, ArrowRight, Sparkles, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import { bulkUploadProducts } from '../../services/adminServices';
 import { useNotification } from '../../context/NotificationContext';
 
@@ -8,13 +8,14 @@ export default function BulkUploadModal({ isOpen, onClose, seller, onComplete })
   const [images, setImages] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [results, setResults] = useState(null);
+  const [showGuide, setShowGuide] = useState(false);
   const { notifySuccess, notifyError } = useNotification();
 
   if (!isOpen || !seller) return null;
 
   const handleDownloadSample = () => {
-    const headers = ['Category','SubCategory','Tag','ProductName','DisplayName','Thickness','Width','Color','ProductType','ProductCode','Unit','MinPrice','MaxPrice','Stock','MOQ','DeliveryHours','Description','ImageName','Applications'];
-    const demoRow = ['strach','FIlm','Packaging','Stretch film','strach_Metelized_stretch_film','"10,12,15"','1200','Transparent','Metelized','PB444','kg','100.00','250.00','1000','50','30','High quality stretch film.','stretch_film.jpg','"Packaging,Industrial"'];
+    const headers = ['Category','SubCategory','Tag','ProductName','DisplayName','Thickness','Width','Color','ProductType','ProductCode','Unit','MinPrice','MaxPrice','Stock','MOQ','DeliveryHours','Description','ImageName','AdditionalImages','Applications'];
+    const demoRow = ['strach','FIlm','Packaging','Stretch film','strach_Metelized_stretch_film','"10,12,15"','1200','Transparent','Metelized','PB444','kg','100.00','250.00','1000','50','30','High quality stretch film.','stretch_film.jpg','"stretch_2.jpg,stretch_3.jpg"','"Packaging,Industrial"'];
     const csvContent = [headers.join(','), demoRow.join(',')].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -53,7 +54,7 @@ export default function BulkUploadModal({ isOpen, onClose, seller, onComplete })
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/70 backdrop-blur-md" onClick={handleClose} />
 
-      <div className="relative bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+      <div className="relative bg-white w-full max-w-md max-h-[90vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden">
 
         {/* Header */}
         <div className="bg-gradient-to-r from-gray-950 to-black px-5 py-4 flex items-center justify-between">
@@ -72,7 +73,7 @@ export default function BulkUploadModal({ isOpen, onClose, seller, onComplete })
         </div>
 
         {/* Content */}
-        <div className="p-5">
+        <div className="p-5 overflow-y-auto custom-scrollbar">
           {results ? (
             <div className="text-center py-3">
               <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center mx-auto mb-3">
@@ -153,12 +154,42 @@ export default function BulkUploadModal({ isOpen, onClose, seller, onComplete })
                 </label>
               </div>
 
-              {/* Hint */}
-              <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-100 rounded-xl">
-                <AlertTriangle size={12} className="text-amber-500 shrink-0 mt-0.5" />
-                <p className="text-[10px] text-amber-700 font-medium leading-relaxed">
-                  Fill the template with your data, then upload here. Image names must match filenames exactly.
-                </p>
+              {/* Detailed Guide Toggle */}
+              <div className="border border-blue-100 rounded-xl overflow-hidden shadow-sm">
+                <button
+                  onClick={() => setShowGuide(!showGuide)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-blue-50/50 hover:bg-blue-100 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <Info size={16} className="text-blue-500" />
+                    <span className="text-xs font-black uppercase tracking-widest text-blue-800">How to Upload (Read Guide)</span>
+                  </div>
+                  {showGuide ? <ChevronUp size={16} className="text-blue-500" /> : <ChevronDown size={16} className="text-blue-500" />}
+                </button>
+                
+                {showGuide && (
+                  <div className="p-4 bg-white border-t border-blue-50 text-xs text-gray-700 leading-relaxed max-h-40 overflow-y-auto space-y-4 custom-scrollbar">
+                    <div>
+                      <strong className="text-gray-900 block text-sm mb-1">1. Required Fields:</strong>
+                      <p>Category, SubCategory, and ProductName are mandatory. Other fields can be left blank if not applicable.</p>
+                    </div>
+                    <div>
+                      <strong className="text-gray-900 block text-sm mb-1">2. Single Image (ImageName):</strong>
+                      <p>Put a direct web link (e.g. <code>https://link.com/img.jpg</code>) OR a filename (e.g. <code>box.jpg</code>). If using a filename, make sure to select that file in Step 3.</p>
+                    </div>
+                    <div>
+                      <strong className="text-gray-900 block text-sm mb-1">3. Multiple Images (AdditionalImages):</strong>
+                      <p>Separate multiple links or filenames with a comma. <br/>
+                      <span className="text-red-600 font-bold mt-1 inline-block">Important:</span> In Excel, wrap the entire text in double quotes.<br/>
+                      <span className="mt-1 inline-block text-gray-500">Example with Files:</span> <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-800">"img1.jpg, img2.jpg"</code><br/>
+                      <span className="mt-1 inline-block text-gray-500">Example with URLs:</span> <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-800 break-all">"https://link.com/1.jpg, https://link.com/2.jpg"</code></p>
+                    </div>
+                    <div>
+                      <strong className="text-gray-900 block text-sm mb-1">4. Prices & Stock:</strong>
+                      <p>Do not include currency symbols (₹) or text like 'kg' in numeric fields. Only use numbers (e.g. <code>150.00</code>).</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Upload Button */}

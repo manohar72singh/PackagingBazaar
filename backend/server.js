@@ -30,7 +30,7 @@ const httpServer = createServer(app);
 initSocket(httpServer);
 
 // Ensure upload directories exist
-const folders = ['uploads/gst_certificates', 'uploads/product_images', 'uploads/others', 'uploads/blog_images'];
+const folders = ['uploads/gst_certificates', 'uploads/product_images', 'uploads/product_pdfs', 'uploads/others', 'uploads/blog_images'];
 folders.forEach(folder => {
   const dir = path.join(__dirname, folder);
   if (!fs.existsSync(dir)) {

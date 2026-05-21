@@ -23,6 +23,8 @@ import PolicyPage from "./pages/PolicyPage";
 import NotFound from "./pages/NotFound";
 import BecomeaSeller from "./pages/BecomeaSeller";
 import LoginPage from "./pages/LoginPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import UserProfile from "./pages/UserProfile";
 import HotDealsPage from "./pages/HotDealsPage";
 import SellerPage from "./pages/SellerPage";
@@ -67,6 +69,8 @@ export default function App() {
               <Route element={<GuestRoute />}>
                 <Route element={<UserLayout />}>
                   <Route path="/login" element={<LoginPage />} />
+                  <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                  <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
                 </Route>
               </Route>
 

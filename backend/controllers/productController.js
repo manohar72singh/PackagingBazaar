@@ -253,6 +253,7 @@ export const getAllProducts = async (req, res) => {
         MAX(p.display_name) as display_name,
         SUBSTRING_INDEX(GROUP_CONCAT(p.description ORDER BY COALESCE(sp.price_min, p.min_price) ASC SEPARATOR '||'), '||', 1) as description,
         SUBSTRING_INDEX(GROUP_CONCAT(p.image_url ORDER BY COALESCE(sp.price_min, p.min_price) ASC SEPARATOR '||'), '||', 1) as image_url,
+        SUBSTRING_INDEX(GROUP_CONCAT(IFNULL(p.additional_images, '') ORDER BY COALESCE(sp.price_min, p.min_price) ASC SEPARATOR '||'), '||', 1) as additional_images,
         SUBSTRING_INDEX(GROUP_CONCAT(p.thickness ORDER BY COALESCE(sp.price_min, p.min_price) ASC SEPARATOR '||'), '||', 1) as thickness,
         SUBSTRING_INDEX(GROUP_CONCAT(p.width ORDER BY COALESCE(sp.price_min, p.min_price) ASC SEPARATOR '||'), '||', 1) as width,
         SUBSTRING_INDEX(GROUP_CONCAT(p.unit ORDER BY COALESCE(sp.price_min, p.min_price) ASC SEPARATOR '||'), '||', 1) as unit,
@@ -363,6 +364,7 @@ export const getProductsBySellers = async (req, res) => {
           MAX(p.name) as name,
           MAX(p.display_name) as display_name,
           MAX(p.image_url) as image_url,
+          MAX(p.additional_images) as additional_images,
           MAX(p.group_key) as group_key,
           MAX(s.is_verified) as is_verified,
           COALESCE(MIN(sp.price_min), MIN(p.min_price), 0) as min_price,
@@ -475,6 +477,16 @@ export const getProductById = async (req, res) => {
 
       const product = rows[0];
 
+      if (product.additional_images) {
+        try {
+          product.additional_images = JSON.parse(product.additional_images);
+        } catch (e) {
+          product.additional_images = [];
+        }
+      } else {
+        product.additional_images = [];
+      }
+
       // Combine applications from JSON column and Mapping table
       let apps = [];
       
@@ -522,7 +534,9 @@ export const getTopSellingProducts = async (req, res) => {
       await connection.query("SET SESSION group_concat_max_len = 10000000");
 
       const query = `
-        SELECT MAX(p.id) as id, MAX(p.name) as name, MAX(p.description) as description, MAX(p.image_url) as image_url, MAX(p.unit) as unit,
+        SELECT MAX(p.id) as id, MAX(p.name) as name, MAX(p.description) as description, MAX(p.image_url) as image_url,
+               SUBSTRING_INDEX(GROUP_CONCAT(IFNULL(p.additional_images, '') ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as additional_images,
+               MAX(p.unit) as unit,
                MAX(t.tag_name) as tag_name, MAX(c.name) as category_name, 
                SUBSTRING_INDEX(GROUP_CONCAT(s.seller_uid ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_uid, 
                SUBSTRING_INDEX(GROUP_CONCAT(s.company_name ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_name, 
@@ -570,6 +584,7 @@ export const getUniqueTopSelling = async (req, res) => {
           -- Pick ALL fields from the same product (lowest id) to avoid mismatch
           SUBSTRING_INDEX(GROUP_CONCAT(p.id ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as id,
           SUBSTRING_INDEX(GROUP_CONCAT(p.image_url ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as image_url,
+          SUBSTRING_INDEX(GROUP_CONCAT(IFNULL(p.additional_images, '') ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as additional_images,
           SUBSTRING_INDEX(GROUP_CONCAT(p.description ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as description,
           SUBSTRING_INDEX(GROUP_CONCAT(p.unit ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as unit,
           SUBSTRING_INDEX(GROUP_CONCAT(t.tag_name ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as tag_name,
@@ -629,6 +644,8 @@ export const addProduct = async (req, res) => {
       image_url,
       description,
       applications, // Expecting array of app_names or app_ids
+      pdf_url,
+      additional_images,
     } = req.body;
 
     const userId = req.user.id;
@@ -691,9 +708,9 @@ export const addProduct = async (req, res) => {
     // 1. Insert into products
     const [productResult] = await connection.query(
       `INSERT INTO products 
-      (name, sub_category_id, tag_id, seller_id, product_group_id, group_key, product_code, thickness, width, product_type, color, min_price, max_price, unit, description, image_url, delivery_time) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, resolvedSubCategoryId, resolvedTagId, seller_id, resolvedGroupId, groupKey === "NEW_GROUP" ? (newGroupId || `GP-${Date.now()}`) : groupKey, req.body.productCode, thickness, width, req.body.productType, req.body.color, minPrice, maxPrice, unit, description, image_url, req.body.deliveryTime],
+      (name, sub_category_id, tag_id, seller_id, product_group_id, group_key, product_code, thickness, width, product_type, color, min_price, max_price, unit, description, image_url, delivery_time, pdf_url, additional_images) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, resolvedSubCategoryId, resolvedTagId, seller_id, resolvedGroupId, groupKey === "NEW_GROUP" ? (newGroupId || `GP-${Date.now()}`) : groupKey, req.body.productCode, thickness, width, req.body.productType, req.body.color, minPrice, maxPrice, unit, description, image_url, req.body.deliveryTime, pdf_url || null, JSON.stringify(additional_images || [])],
     );
 
     const productId = productResult.insertId;
@@ -771,6 +788,8 @@ export const updateProduct = async (req, res) => {
     applications, 
     is_hot_deal,
     is_trending,
+    pdf_url,
+    additional_images,
   } = req.body;
 
   const final_image_url = image_url || img;
@@ -830,14 +849,16 @@ export const updateProduct = async (req, res) => {
         image_url = COALESCE(NULLIF(?, ''), image_url), 
         delivery_time = ?,
         is_hot_deal = ?,
-        is_trending = ?
+        is_trending = ?,
+        pdf_url = ?,
+        additional_images = ?
       WHERE id = ?
     `;
     
     await connection.query(updateProductSql, [
       name, display_name, s_sub_category_id, s_product_group_id, s_tag_id, product_code,
       thickness, color, productType, s_minPrice, s_maxPrice, width, unit,
-      description, final_image_url, deliveryTime, is_hot_deal ? 1 : 0, is_trending ? 1 : 0, id
+      description, final_image_url, deliveryTime, is_hot_deal ? 1 : 0, is_trending ? 1 : 0, pdf_url || null, JSON.stringify(additional_images || []), id
     ]);
 
     // 3. Update product_stocks table
@@ -968,7 +989,10 @@ export const deleteProduct = async (req, res) => {
 export const getHotDeals = async (req, res) => {
   try {
     const query = `
-      SELECT MAX(p.id) as id, MAX(p.name) as name, MAX(p.description) as description, MAX(p.image_url) as image_url, MAX(p.unit) as unit,
+      SELECT MAX(p.id) as id, MAX(p.name) as name, MAX(p.description) as description,
+             MAX(p.image_url) as image_url,
+             SUBSTRING_INDEX(GROUP_CONCAT(IFNULL(p.additional_images, '') ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as additional_images,
+             MAX(p.unit) as unit,
              MAX(t.tag_name) as tag_name, MAX(c.name) as category_name, 
              SUBSTRING_INDEX(GROUP_CONCAT(s.company_name ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_name, 
              SUBSTRING_INDEX(GROUP_CONCAT(s.seller_uid ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_uid,
@@ -1007,7 +1031,10 @@ export const getHotDeals = async (req, res) => {
 export const getTrendingProducts = async (req, res) => {
   try {
     const query = `
-      SELECT MAX(p.id) as id, MAX(p.name) as name, MAX(p.description) as description, MAX(p.image_url) as image_url, MAX(p.unit) as unit,
+      SELECT MAX(p.id) as id, MAX(p.name) as name, MAX(p.description) as description,
+             MAX(p.image_url) as image_url,
+             SUBSTRING_INDEX(GROUP_CONCAT(IFNULL(p.additional_images, '') ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as additional_images,
+             MAX(p.unit) as unit,
              MAX(t.tag_name) as tag_name, MAX(c.name) as category_name, 
              SUBSTRING_INDEX(GROUP_CONCAT(s.company_name ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_name, 
              SUBSTRING_INDEX(GROUP_CONCAT(s.seller_uid ORDER BY sp.price_min ASC SEPARATOR '||'), '||', 1) as seller_uid,
