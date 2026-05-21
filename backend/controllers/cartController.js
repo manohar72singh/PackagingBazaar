@@ -11,7 +11,7 @@ export const getCart = async (req, res) => {
                p.description, p.image_url as image,
                p.thickness, p.width, p.unit, p.color,
                c.selected_thickness, c.selected_width, c.selected_brand,
-               c.inquiry_quantity
+               c.inquiry_quantity, c.specific_message
         FROM cart_items c 
         JOIN products p ON c.product_id = p.id 
         LEFT JOIN seller_products sp ON p.id = sp.product_id AND c.seller_id = sp.seller_id
@@ -30,13 +30,13 @@ export const getCart = async (req, res) => {
 export const addToCart = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { productId, sellerId, quantity, thickness, width, brand, inquiryQuantity } = req.body;
+    const { productId, sellerId, quantity, thickness, width, brand, inquiryQuantity, specificMessage } = req.body;
 
     if (!productId || !sellerId) return res.status(400).json({ success: false, message: "Product ID and Seller ID required" });
 
     // Check if item with SAME ATTRIBUTES already exists
     const [existing] = await pool.query(
-      "SELECT id, quantity FROM cart_items WHERE user_id = ? AND product_id = ? AND seller_id = ? AND selected_thickness <=> ? AND selected_width <=> ? AND selected_brand <=> ?", 
+      "SELECT id, quantity, inquiry_quantity, specific_message FROM cart_items WHERE user_id = ? AND product_id = ? AND seller_id = ? AND selected_thickness <=> ? AND selected_width <=> ? AND selected_brand <=> ?", 
       [userId, productId, sellerId, thickness || null, width || null, brand || null]
     );
 
@@ -46,15 +46,17 @@ export const addToCart = async (req, res) => {
       if (safeQty <= 0) {
         await pool.query("DELETE FROM cart_items WHERE id = ?", [existing[0].id]);
       } else {
+        // If specificMessage is provided in request, update it; otherwise retain existing
+        const finalMessage = specificMessage !== undefined ? specificMessage : existing[0].specific_message;
         await pool.query(
-          "UPDATE cart_items SET quantity = ?, inquiry_quantity = ? WHERE id = ?", 
-          [safeQty, inquiryQuantity || existing[0].inquiry_quantity || null, existing[0].id]
+          "UPDATE cart_items SET quantity = ?, inquiry_quantity = ?, specific_message = ? WHERE id = ?", 
+          [safeQty, inquiryQuantity || existing[0].inquiry_quantity || null, finalMessage || null, existing[0].id]
         );
       }
     } else if (safeQty > 0) {
       await pool.query(
-        "INSERT INTO cart_items (user_id, product_id, seller_id, quantity, selected_thickness, selected_width, selected_brand, inquiry_quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
-        [userId, productId, sellerId, safeQty, thickness || null, width || null, brand || null, inquiryQuantity || null]
+        "INSERT INTO cart_items (user_id, product_id, seller_id, quantity, selected_thickness, selected_width, selected_brand, inquiry_quantity, specific_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+        [userId, productId, sellerId, safeQty, thickness || null, width || null, brand || null, inquiryQuantity || null, specificMessage || null]
       );
     }
 
@@ -97,13 +99,13 @@ export const syncCart = async (req, res) => {
       
       if (exists.length > 0) {
         await connection.query(
-          "UPDATE cart_items SET quantity = 1, inquiry_quantity = ? WHERE id = ?", 
-          [item.inquiry_quantity || null, exists[0].id]
+          "UPDATE cart_items SET quantity = 1, inquiry_quantity = ?, specific_message = ? WHERE id = ?", 
+          [item.inquiry_quantity || null, item.specific_message || null, exists[0].id]
         );
       } else {
         await connection.query(
-          "INSERT INTO cart_items (user_id, product_id, seller_id, quantity, selected_thickness, selected_width, selected_brand, inquiry_quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
-          [userId, item.id, item.seller_id, 1, item.thickness || null, item.width || null, item.brand || null, item.inquiry_quantity || null]
+          "INSERT INTO cart_items (user_id, product_id, seller_id, quantity, selected_thickness, selected_width, selected_brand, inquiry_quantity, specific_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
+          [userId, item.id, item.seller_id, 1, item.thickness || null, item.width || null, item.brand || null, item.inquiry_quantity || null, item.specific_message || null]
         );
       }
     }

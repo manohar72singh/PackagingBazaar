@@ -27,32 +27,59 @@ export default function AdminProducts() {
     seller: "",
     status: "" // 'hot', 'trending'
   });
+  const [categories, setCategories] = useState([]);
+  const [sellers, setSellers] = useState([]);
   const { notifyError, notifySuccess } = useNotification();
   const [exporting, setExporting] = useState(false);
   const navigate = useNavigate();
 
-  // Get unique categories and sellers for filters
-  const categories = [...new Set(products.map(p => p.category_name))].filter(Boolean);
-  const sellers = [...new Set(products.map(p => p.seller_name))].filter(Boolean);
+  const debounceRef = React.useRef(null);
+  const isMounted = React.useRef(false);
 
   useEffect(() => {
-    loadProducts(1);
+    loadProducts(1, search, filters);
+    isMounted.current = true;
   }, []);
 
-  const loadProducts = async (page) => {
+  // Debounced search — fires API call 400ms after user stops typing
+  useEffect(() => {
+    if (!isMounted.current) return;
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      loadProducts(1, search, filters);
+    }, 400);
+
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
+
+  const loadProducts = async (page, currentSearch = search, currentFilters = filters) => {
     setLoading(true);
     try {
-      const res = await fetchAllProductsAdmin(page);
+      const res = await fetchAllProductsAdmin(page, 10, currentSearch, currentFilters);
       if (res.success) {
         setProducts(res.products);
         setTotalPages(res.totalPages || 1);
         setCurrentPage(res.currentPage || 1);
+        if (res.uniqueCategories) setCategories(res.uniqueCategories);
+        if (res.uniqueSellers) setSellers(res.uniqueSellers);
       }
     } catch (err) {
       notifyError("Failed to load products");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleFilterChange = (newFilters) => {
+    setFilters(newFilters);
+    loadProducts(1, search, newFilters);
+  };
+
+  const handleClearFilters = () => {
+    const cleared = { category: "", seller: "", status: "" };
+    setFilters(cleared);
+    loadProducts(1, search, cleared);
   };
 
   const handleToggleHotDeal = async (product) => {
@@ -100,22 +127,7 @@ export default function AdminProducts() {
     }
   };
 
-  const filteredProducts = products.filter((item) => {
-    const s = search.toLowerCase();
-    const matchesSearch = (
-      item.name?.toLowerCase().includes(s) ||
-      item.seller_name?.toLowerCase().includes(s)
-    );
-
-    const matchesCategory = !filters.category || item.category_name === filters.category;
-    const matchesSeller = !filters.seller || item.seller_name === filters.seller;
-    const matchesStatus = 
-      !filters.status || 
-      (filters.status === "hot" && item.is_hot_deal) || 
-      (filters.status === "trending" && item.is_trending);
-
-    return matchesSearch && matchesCategory && matchesSeller && matchesStatus;
-  });
+  const filteredProducts = products;
 
   if (loading && products.length === 0) {
     return (
@@ -199,7 +211,7 @@ export default function AdminProducts() {
           </div>
           <select
             value={filters.category}
-            onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+            onChange={(e) => handleFilterChange({ ...filters, category: e.target.value })}
             className="bg-transparent border-none text-[11px] font-bold text-gray-600 outline-none py-2 pr-4 cursor-pointer"
           >
             <option value="">All Categories</option>
@@ -208,7 +220,7 @@ export default function AdminProducts() {
           <div className="w-px h-4 bg-gray-100" />
           <select
             value={filters.seller}
-            onChange={(e) => setFilters({ ...filters, seller: e.target.value })}
+            onChange={(e) => handleFilterChange({ ...filters, seller: e.target.value })}
             className="bg-transparent border-none text-[11px] font-bold text-gray-600 outline-none py-2 pr-4 cursor-pointer"
           >
             <option value="">All Sellers</option>
@@ -217,7 +229,7 @@ export default function AdminProducts() {
           <div className="w-px h-4 bg-gray-100" />
           <select
             value={filters.status}
-            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+            onChange={(e) => handleFilterChange({ ...filters, status: e.target.value })}
             className="bg-transparent border-none text-[11px] font-bold text-gray-600 outline-none py-2 pr-4 cursor-pointer"
           >
             <option value="">Any Status</option>
@@ -227,7 +239,7 @@ export default function AdminProducts() {
 
           {(filters.category || filters.seller || filters.status) && (
             <button 
-              onClick={() => setFilters({ category: "", seller: "", status: "" })}
+              onClick={handleClearFilters}
               className="text-[10px] font-black uppercase text-accent hover:underline px-3 border-l border-gray-100"
             >
               Clear
@@ -337,7 +349,7 @@ export default function AdminProducts() {
             <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
-              onPageChange={(page) => loadProducts(page)}
+              onPageChange={(page) => loadProducts(page, search, filters)}
             />
           </div>
         )}

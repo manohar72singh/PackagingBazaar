@@ -51,8 +51,13 @@ export const rejectSellerAccount = async (id) => {
 };
 
 // --- Product Management ---
-export const fetchAllProductsAdmin = async (page = 1, limit = 10) => {
-  const response = await API.get(`/admin/products/all?page=${page}&limit=${limit}`);
+export const fetchAllProductsAdmin = async (page = 1, limit = 10, search = "", filters = {}) => {
+  let url = `/admin/products/all?page=${page}&limit=${limit}`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
+  if (filters.category) url += `&category=${encodeURIComponent(filters.category)}`;
+  if (filters.seller) url += `&seller=${encodeURIComponent(filters.seller)}`;
+  if (filters.status) url += `&status=${encodeURIComponent(filters.status)}`;
+  const response = await API.get(url);
   return response.data;
 };
 

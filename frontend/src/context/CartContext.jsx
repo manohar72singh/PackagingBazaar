@@ -41,6 +41,13 @@ const reducer = (state, action) => {
         return isMatch ? { ...i, inquiry_quantity: action.inquiry_quantity } : i;
       });
     }
+    case "UPDATE_ITEM_MESSAGE": {
+      return state.map((i) => {
+        const isMatch = (action.cart_id && i.cart_id === action.cart_id) || 
+                        (action.local_id && i.local_id === action.local_id);
+        return isMatch ? { ...i, specific_message: action.specific_message } : i;
+      });
+    }
     case "CLEAR": return [];
     case "SET_CART": return action.cart;
     default: return state;
@@ -74,7 +81,8 @@ export const CartProvider = ({ children }) => {
               thickness: i.selected_thickness,
               width: i.selected_width,
               brand: i.selected_brand,
-              inquiry_quantity: i.inquiry_quantity || ""
+              inquiry_quantity: i.inquiry_quantity || "",
+              specific_message: i.specific_message || ""
             })));
           }
           const res = await fetchCartAPI();
@@ -91,6 +99,7 @@ export const CartProvider = ({ children }) => {
               selected_width: i.selected_width,
               selected_brand: i.selected_brand,
               inquiry_quantity: i.inquiry_quantity || "",
+              specific_message: i.specific_message || "",
               unit: i.unit,
               color: i.color,
               seller_id: i.seller_id,
@@ -119,6 +128,7 @@ export const CartProvider = ({ children }) => {
       seller_id: p.seller_id,
       seller_uid: p.seller_uid,
       inquiry_quantity: p.selected_quantity || p.inquiry_quantity || "",
+      specific_message: p.specific_message || "",
       local_id: `${p.id}-${p.seller_id}-${p.selected_thickness || ""}-${p.selected_width || ""}-${p.selected_brand || ""}`
     };
     
@@ -132,7 +142,8 @@ export const CartProvider = ({ children }) => {
           thickness: p.selected_thickness,
           width: p.selected_width,
           brand: p.selected_brand,
-          inquiryQuantity: p.selected_quantity || p.inquiry_quantity || ""
+          inquiryQuantity: p.selected_quantity || p.inquiry_quantity || "",
+          specificMessage: p.specific_message || ""
         });
         // Refresh cart to get real cart_ids from backend
         const res = await fetchCartAPI();
@@ -148,6 +159,7 @@ export const CartProvider = ({ children }) => {
               selected_width: i.selected_width,
               selected_brand: i.selected_brand,
               inquiry_quantity: i.inquiry_quantity,
+              specific_message: i.specific_message || "",
               unit: i.unit,
               color: i.color,
               seller_id: i.seller_id,
@@ -175,11 +187,30 @@ export const CartProvider = ({ children }) => {
           thickness: item.selected_thickness,
           width: item.selected_width,
           brand: item.selected_brand,
-          inquiryQuantity: inquiry_quantity
+          inquiryQuantity: inquiry_quantity,
+          specificMessage: item.specific_message || ""
         }); 
       } catch (err) { 
         notifyError("Update failed");
         console.error(err); 
+      }
+    }
+  };
+
+  const updateItemMessage = async (item, specific_message) => {
+    dispatch({ type: "UPDATE_ITEM_MESSAGE", cart_id: item.cart_id, local_id: item.local_id, specific_message });
+    if (token && item.id) {
+      try {
+        await addToCartAPI(item.id, 1, {
+          sellerId: item.seller_id,
+          thickness: item.selected_thickness,
+          width: item.selected_width,
+          brand: item.selected_brand,
+          inquiryQuantity: item.inquiry_quantity,
+          specificMessage: specific_message
+        });
+      } catch (err) {
+        console.error("Failed to update message in backend:", err);
       }
     }
   };
@@ -195,7 +226,7 @@ export const CartProvider = ({ children }) => {
   const count = cart.length; // Number of unique product entries
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateInquiryQty, clearCart, total, count }}>
+    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateInquiryQty, updateItemMessage, clearCart, total, count }}>
       {children}
     </CartContext.Provider>
   );

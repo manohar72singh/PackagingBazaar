@@ -38,11 +38,9 @@ export default function AdminInquiries() {
   const toggleExpandLead = (id) => setExpandedLeads(p => ({ ...p, [id]: !p[id] }));
   const [filters, setFilters] = useState({
     status: "",
-    product: "",
-    seller: ""
+    product: ""
   });
   const [uniqueProducts, setUniqueProducts] = useState([]);
-  const [uniqueSellers, setUniqueSellers] = useState([]);
   const { notifyError, notifySuccess } = useNotification();
   const [exporting, setExporting] = useState(false);
   const [submitting, setSubmitting] = useState(null); // inquiryId
@@ -71,7 +69,6 @@ export default function AdminInquiries() {
         setTotalPages(res.totalPages || 1);
         setCurrentPage(res.currentPage || 1);
         if (res.uniqueProducts) setUniqueProducts(res.uniqueProducts);
-        if (res.uniqueSellers) setUniqueSellers(res.uniqueSellers);
       }
     } catch (err) {
       notifyError("Failed to load inquiries");
@@ -250,19 +247,9 @@ export default function AdminInquiries() {
             <option value="">All Products</option>
             {uniqueProducts.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
-          <div className="w-px h-4 bg-gray-100" />
-          <select
-            value={filters.seller}
-            onChange={(e) => handleFilterChange({ ...filters, seller: e.target.value })}
-            className="bg-transparent border-none text-[11px] font-bold text-gray-600 outline-none py-2 pr-4 cursor-pointer max-w-[150px]"
-          >
-            <option value="">All Sellers</option>
-            {uniqueSellers.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-
-          {(filters.status || filters.product || filters.seller) && (
+          {(filters.status || filters.product) && (
             <button 
-              onClick={() => handleFilterChange({ status: "", product: "", seller: "" })}
+              onClick={() => handleFilterChange({ status: "", product: "" })}
               className="text-[10px] font-black uppercase text-accent hover:underline px-3 border-l border-gray-100"
             >
               Clear

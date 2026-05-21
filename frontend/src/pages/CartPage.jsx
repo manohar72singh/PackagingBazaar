@@ -9,7 +9,7 @@ import { useNotification } from "../context/NotificationContext";
 import { getImageUrl } from "../services/api";
 
 export default function CartPage() {
-  const { cart, removeFromCart, updateInquiryQty, total, clearCart, count } = useCart();
+  const { cart, removeFromCart, updateInquiryQty, updateItemMessage, total, clearCart, count } = useCart();
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
   const { notifySuccess, notifyError } = useNotification();
@@ -40,7 +40,7 @@ export default function CartPage() {
       const promises = cart.map(item => 
         submitInquiryAPI({
           product_id: item.id,
-          message: `Bulk Inquiry: ${formData.message}`,
+          message: item.specific_message ? `Product Requirement Note: ${item.specific_message}` : `Bulk Inquiry: ${formData.message}`,
           // Use the item's own inquiry_quantity (the B2B order size)
           quantity: item.inquiry_quantity || formData.quantity || "Not specified",
           thickness: item.selected_thickness || "Standard", 
@@ -65,6 +65,15 @@ export default function CartPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCheckoutClick = () => {
+    const missingNotes = cart.some(item => !item.specific_message || !item.specific_message.trim());
+    if (missingNotes) {
+      const proceed = window.confirm("Warning: Aapne kuch products ke liye specific requirements/notes nahi likhe hain. Kya aap default message ke sath checkout proceed karna chahte hain?");
+      if (!proceed) return;
+    }
+    setIsModalOpen(true);
   };
 
   return (
@@ -157,6 +166,27 @@ export default function CartPage() {
                       />
                     </div>
                   </div>
+
+                  {/* Specific Message / Notes Input field */}
+                  <div className="mt-3 pt-2.5 border-t border-dashed border-gray-100 flex flex-col gap-1">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">
+                        Specific Requirements / Custom Instructions
+                      </label>
+                      {!item.specific_message?.trim() && (
+                        <span className="text-[8px] font-black text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 animate-pulse">
+                          ⚠️ Empty note
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={item.specific_message || ""}
+                      onChange={(e) => updateItemMessage(item, e.target.value)}
+                      placeholder="e.g. Need glossy finish, special custom sizing, or fast delivery notes..."
+                      className="w-full text-[11px] font-semibold text-gray-700 bg-gray-50 hover:bg-gray-50/80 focus:bg-white border border-gray-100 focus:border-accent/30 rounded-xl px-3 py-2 focus:outline-none transition-all placeholder:text-gray-300 shadow-inner"
+                    />
+                  </div>
                 </div>
               </div>
               </motion.div>
@@ -214,6 +244,15 @@ export default function CartPage() {
                           <span className="text-[8px] xs:text-[9px] font-bold text-orange-300 px-1.5 py-0.5 border border-dashed border-orange-200 rounded-md bg-orange-50/50">Qty: not set ⚠</span>
                         )}
                       </div>
+                      {item.specific_message ? (
+                        <div className="mt-1.5 text-[8px] font-semibold text-gray-500 bg-white border border-gray-100 rounded px-1.5 py-0.5 line-clamp-1 italic">
+                          ✍ "{item.specific_message}"
+                        </div>
+                      ) : (
+                        <div className="mt-1.5 text-[8px] font-black text-amber-600 bg-amber-50 border border-dashed border-amber-200 rounded px-1.5 py-0.5 line-clamp-1 italic">
+                          ⚠️ No specific notes (using general message)
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -226,7 +265,7 @@ export default function CartPage() {
 
               {/* Request Quotation Button */}
               <button 
-                onClick={() => setIsModalOpen(true)} 
+                onClick={handleCheckoutClick} 
                 className="w-full bg-accent text-white py-4 xs:py-5 rounded-xl xs:rounded-[1.5rem] font-black text-[10px] xs:text-xs uppercase tracking-widest hover:shadow-2xl hover:shadow-orange-500/20 hover:-translate-y-1 transition-all flex items-center justify-center gap-2 group shadow-xl shadow-orange-500/10"
               >
                 <span className="hidden xs:inline">REQUEST QUOTATION FOR ALL</span>

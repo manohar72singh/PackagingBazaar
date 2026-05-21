@@ -294,6 +294,35 @@ export const getAllProductsAdmin = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
+    const search = req.query.search?.trim() || "";
+    const category = req.query.category || "";
+    const seller = req.query.seller || "";
+    const status = req.query.status || "";
+
+    let whereClause = "WHERE 1=1";
+    let queryParams = [];
+
+    if (search) {
+      whereClause += ` AND (p.name LIKE ? OR s.company_name LIKE ? OR p.product_code LIKE ?)`;
+      const searchPattern = `%${search}%`;
+      queryParams.push(searchPattern, searchPattern, searchPattern);
+    }
+
+    if (category) {
+      whereClause += ` AND c.name = ?`;
+      queryParams.push(category);
+    }
+
+    if (seller) {
+      whereClause += ` AND s.company_name = ?`;
+      queryParams.push(seller);
+    }
+
+    if (status === "hot") {
+      whereClause += ` AND p.is_hot_deal = 1`;
+    } else if (status === "trending") {
+      whereClause += ` AND p.is_trending = 1`;
+    }
 
     const query = `
       SELECT 
@@ -310,19 +339,48 @@ export const getAllProductsAdmin = async (req, res) => {
       LEFT JOIN product_stocks ps ON p.id = ps.product_id
       LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
       LEFT JOIN categories c ON sc.category_id = c.id
+      ${whereClause}
       ORDER BY p.id DESC
       LIMIT ? OFFSET ?
     `;
-    const [rows] = await pool.query(query, [limit, offset]);
 
-    const [[{ total }]] = await pool.query("SELECT COUNT(*) as total FROM products");
+    const countQuery = `
+      SELECT COUNT(*) as total 
+      FROM products p
+      LEFT JOIN sellers s ON p.seller_id = s.id
+      LEFT JOIN sub_categories sc ON p.sub_category_id = sc.id
+      LEFT JOIN categories c ON sc.category_id = c.id
+      ${whereClause}
+    `;
+
+    const [rows] = await pool.query(query, [...queryParams, limit, offset]);
+    const [[{ total }]] = await pool.query(countQuery, queryParams);
+
+    // Fetch unique categories and sellers for filter options dropdown
+    const [categoriesRows] = await pool.query(`
+      SELECT DISTINCT c.name as category_name
+      FROM categories c
+      JOIN sub_categories sc ON sc.category_id = c.id
+      JOIN products p ON p.sub_category_id = sc.id
+      ORDER BY c.name ASC
+    `);
+    const [sellersRows] = await pool.query(`
+      SELECT DISTINCT s.company_name as seller_name
+      FROM sellers s
+      JOIN products p ON p.seller_id = s.id
+      ORDER BY s.company_name ASC
+    `);
+    const uniqueCategories = categoriesRows.map(r => r.category_name).filter(Boolean);
+    const uniqueSellers = sellersRows.map(r => r.seller_name).filter(Boolean);
 
     res.status(200).json({ 
       success: true, 
       products: rows,
       totalCount: total,
       totalPages: Math.ceil(total / limit),
-      currentPage: page
+      currentPage: page,
+      uniqueCategories,
+      uniqueSellers
     });
   } catch (error) {
     console.error("getAllProductsAdmin Error:", error);
