@@ -27,12 +27,11 @@ export const checkout = async (req, res) => {
     // Create Order Items with Specifications
      for (const item of items) {
       await connection.query(
-        "INSERT INTO order_items (order_id, product_id, seller_id, quantity, price_at_time, thickness, width, brand) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        [orderId, item.product_id, item.seller_id, item.quantity, item.price, item.thickness || null, item.width || null, item.brand || null]
+        "INSERT INTO order_items (order_id, product_id, seller_id, quantity, price_at_time, thickness, width, brand, specific_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [orderId, item.product_id, item.seller_id, item.quantity, item.price, item.thickness || null, item.width || null, item.brand || null, item.specific_message || item.specificMessage || null]
       );
       if (item.seller_id) sellerIdsToNotify.add(item.seller_id);
     }
-
     // Clear user cart after successful checkout
     await connection.query("DELETE FROM cart_items WHERE user_id = ?", [userId]);
 
@@ -81,6 +80,7 @@ export const getMyOrders = async (req, res) => {
             'thickness', oi.thickness,
             'width', oi.width,
             'brand', oi.brand,
+            'specific_message', oi.specific_message,
             'seller_id', oi.seller_id
           )
         ) 

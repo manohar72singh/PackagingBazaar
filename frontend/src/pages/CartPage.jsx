@@ -40,6 +40,7 @@ export default function CartPage() {
       const promises = cart.map(item => 
         submitInquiryAPI({
           product_id: item.id,
+          seller_id: item.seller_id,
           message: item.specific_message ? `Product Requirement Note: ${item.specific_message}` : `Bulk Inquiry: ${formData.message}`,
           // Use the item's own inquiry_quantity (the B2B order size)
           quantity: item.inquiry_quantity || formData.quantity || "Not specified",

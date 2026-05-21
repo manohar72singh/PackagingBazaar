@@ -8,7 +8,7 @@ import { verifyToken } from "../middlewares/authMiddleware.js";
 router.get("/", verifyToken, getCart);
 router.post("/", verifyToken, addToCart);
 router.delete("/clear", verifyToken, clearCart);
-router.delete("/:productId", verifyToken, removeFromCart);
+router.delete("/:cartId", verifyToken, removeFromCart);
 router.post("/sync", verifyToken, syncCart);
 
 export default router;

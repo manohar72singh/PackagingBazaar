@@ -130,7 +130,6 @@ export const getSellerProducts = async (req, res) => {
   }
 };
 
-// Get current logged in seller's orders
 export const getSellerOrders = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -145,12 +144,25 @@ export const getSellerOrders = async (req, res) => {
     );
 
     if (sellerRows.length === 0) {
-      return res
-        .status(200)
-        .json({ success: true, data: [], totalCount: 0, totalPages: 0 });
+      return res.status(200).json({
+        success: true,
+        data: [],
+        totalCount: 0,
+        totalPages: 0,
+        currentPage: page,
+      });
     }
 
     const sellerId = sellerRows[0].id;
+
+    // Get total count
+    const [[{ total }]] = await pool.query(
+      `SELECT COUNT(DISTINCT o.id) as total 
+       FROM orders o
+       JOIN order_items oi ON o.id = oi.order_id
+       WHERE oi.seller_id = ?`,
+      [sellerId]
+    );
 
     const query = `
       SELECT o.id, o.user_id, o.total_price, o.status, o.order_date, 
@@ -162,7 +174,8 @@ export const getSellerOrders = async (req, res) => {
                   'price', oi.price_at_time,
                   'thickness', oi.thickness,
                   'width', oi.width,
-                  'brand', oi.brand
+                  'brand', oi.brand,
+                  'specific_message', oi.specific_message
                 )
               ) 
               FROM order_items oi 
@@ -179,16 +192,6 @@ export const getSellerOrders = async (req, res) => {
     `;
 
     const [rows] = await pool.query(query, [sellerId, sellerId, limit, offset]);
-
-    const [[{ total }]] = await pool.query(
-      `
-      SELECT COUNT(DISTINCT o.id) as total 
-      FROM orders o
-      JOIN order_items oi ON o.id = oi.order_id
-      WHERE oi.seller_id = ?
-    `,
-      [sellerId],
-    );
 
     res.status(200).json({
       success: true,

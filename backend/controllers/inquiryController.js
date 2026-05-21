@@ -8,6 +8,7 @@ export const submitInquiry = async (req, res) => {
     try {
         const { 
             product_id, 
+            seller_id: bodySellerId,
             message, 
             quantity, 
             thickness, 
@@ -27,19 +28,24 @@ export const submitInquiry = async (req, res) => {
             return res.status(400).json({ success: false, message: "Product ID is required." });
         }
 
-        const [pRows] = await pool.query(`
-            SELECT COALESCE(p.seller_id, sp.seller_id) as seller_id 
-            FROM products p
-            LEFT JOIN seller_products sp ON p.id = sp.product_id
-            WHERE p.id = ?
-            LIMIT 1
-        `, [product_id]);
+        let seller_id = bodySellerId;
 
-        if (pRows.length === 0) {
-            return res.status(404).json({ success: false, message: `Product ID ${product_id} not found.` });
+        if (!seller_id) {
+            const [pRows] = await pool.query(`
+                SELECT COALESCE(p.seller_id, sp.seller_id) as seller_id 
+                FROM products p
+                LEFT JOIN seller_products sp ON p.id = sp.product_id
+                WHERE p.id = ?
+                LIMIT 1
+            `, [product_id]);
+
+            if (pRows.length === 0) {
+                return res.status(404).json({ success: false, message: `Product ID ${product_id} not found.` });
+            }
+
+            seller_id = pRows[0].seller_id;
         }
 
-        const seller_id = pRows[0].seller_id;
         if (!seller_id) {
             return res.status(400).json({ success: false, message: "Error: No manufacturer linked to this product." });
         }

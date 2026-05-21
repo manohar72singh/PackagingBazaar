@@ -97,15 +97,16 @@ export const syncCart = async (req, res) => {
         [userId, item.id, item.seller_id, item.thickness || null, item.width || null, item.brand || null]
       );
       
+      const itemQty = item.qty || item.quantity || 1;
       if (exists.length > 0) {
         await connection.query(
-          "UPDATE cart_items SET quantity = 1, inquiry_quantity = ?, specific_message = ? WHERE id = ?", 
-          [item.inquiry_quantity || null, item.specific_message || null, exists[0].id]
+          "UPDATE cart_items SET quantity = ?, inquiry_quantity = ?, specific_message = ? WHERE id = ?", 
+          [itemQty, item.inquiry_quantity || null, item.specific_message || null, exists[0].id]
         );
       } else {
         await connection.query(
           "INSERT INTO cart_items (user_id, product_id, seller_id, quantity, selected_thickness, selected_width, selected_brand, inquiry_quantity, specific_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-          [userId, item.id, item.seller_id, 1, item.thickness || null, item.width || null, item.brand || null, item.inquiry_quantity || null, item.specific_message || null]
+          [userId, item.id, item.seller_id, itemQty, item.thickness || null, item.width || null, item.brand || null, item.inquiry_quantity || null, item.specific_message || null]
         );
       }
     }
