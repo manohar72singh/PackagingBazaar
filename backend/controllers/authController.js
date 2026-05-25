@@ -326,13 +326,16 @@ export const getCurrentUser = async (req, res) => {
 // 5. FORGOT PASSWORD
 export const forgotPassword = async (req, res) => {
   const { email } = req.body;
-  if (!email) return res.status(400).json({ success: false, message: "Email is required" });
+  if (!email) return res.status(400).json({ success: false, message: "Email is required." });
+
+  if (!validateEmail(email)) {
+    return res.status(400).json({ success: false, message: "Invalid email format." });
+  }
 
   try {
     const [users] = await pool.query("SELECT id, name FROM users WHERE email = ?", [email]);
     if (users.length === 0) {
-      // Don't leak that the email doesn't exist, just return success
-      return res.status(200).json({ success: true, message: "If an account with that email exists, we sent a password reset link." });
+      return res.status(404).json({ success: false, message: "This email is not registered with us." });
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');

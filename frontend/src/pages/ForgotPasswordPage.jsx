@@ -27,16 +27,22 @@ export default function ForgotPasswordPage() {
   const [successMsg, setSuccessMsg] = useState(false);
   const { notifyError } = useNotification();
 
+  const validateEmailFormat = (emailStr) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(emailStr);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email) return notifyError("Please enter your email address.");
+    if (!validateEmailFormat(email)) return notifyError("Please enter a valid email address.");
     
     setLoading(true);
     try {
       await forgotPasswordAPI(email);
       setSuccessMsg(true);
     } catch (err) {
-      notifyError(err?.response?.data?.message || "Failed to send reset link.");
+      notifyError(err?.message || err?.response?.data?.message || "Failed to send reset link.");
     } finally {
       setLoading(false);
     }
@@ -61,11 +67,11 @@ export default function ForgotPasswordPage() {
                 <h1 className="text-2xl font-bold text-[#1a1a1a] tracking-tight font-syne uppercase">Forgot Password</h1>
                 <p className="text-gray-500 text-sm mt-1">Enter your email to receive a reset link.</p>
               </div>
-
-              {successMsg ? (
+ 
+               {successMsg ? (
                 <div className="text-center space-y-5">
                   <div className="bg-green-50 text-green-700 p-4 rounded-xl border border-green-100 text-sm">
-                    If an account exists with that email, we have sent a password reset link. Please check your inbox.
+                    We have sent a password reset link to your email. Please check your inbox.
                   </div>
                   <button onClick={() => navigate("/login")} className="w-full bg-gray-900 hover:bg-black text-white font-bold py-3.5 rounded-xl transition-all text-sm">
                     Return to Sign In
@@ -74,7 +80,15 @@ export default function ForgotPasswordPage() {
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <InputField label="Email Address" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g. rahul@example.com" icon={<MailIcon />} />
-                  <button type="submit" disabled={loading} className="w-full bg-[#e8511a] hover:bg-[#d4460f] text-white font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm shadow-lg shadow-orange-200 active:scale-[0.98]">
+                  <button 
+                    type="submit" 
+                    disabled={loading || !validateEmailFormat(email)} 
+                    className={`w-full font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm shadow-lg active:scale-[0.98] ${
+                      loading || !validateEmailFormat(email)
+                        ? "bg-gray-300 text-gray-500 cursor-not-allowed shadow-none" 
+                        : "bg-[#e8511a] hover:bg-[#d4460f] text-white shadow-orange-200"
+                    }`}
+                  >
                     {loading ? <><SpinIcon /> Sending...</> : "Send Reset Link"}
                   </button>
                 </form>
