@@ -2,6 +2,7 @@ import pool from "../config/db.js";
 import { sendNotification } from "../utils/notificationHelper.js";
 import { sendEmail } from "../utils/mailHelper.js";
 import { getCoordinates } from "../utils/geoUtils.js";
+import https from "https";
 
 // 1. Submit a Buyer Inquiry (Lead)
 export const submitInquiry = async (req, res) => {
@@ -408,5 +409,93 @@ export const updateAssignmentStatus = async (req, res) => {
     } catch (err) {
         console.error("Error updating assignment status:", err);
         res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
+
+// 7. Get Pincode Details (Safe SSL bypass and accurate coordinates mapping)
+export const getPincodeDetails = async (req, res) => {
+    try {
+        const { pincode } = req.params;
+        const cleaned = pincode.replace(/\D/g, "").slice(0, 6);
+        
+        if (cleaned.length !== 6) {
+            return res.status(400).json({ success: false, message: "Invalid 6-digit pincode." });
+        }
+        
+        let postOfficeName = "";
+        let city = "";
+        let state = "";
+        let latitude = null;
+        let longitude = null;
+
+        // 1. Fetch exact branch name from postal API bypassing SSL warnings
+        try {
+            const apiRes = await new Promise((resolve, reject) => {
+                const options = {
+                    hostname: 'api.postalpincode.in',
+                    port: 443,
+                    path: `/pincode/${cleaned}`,
+                    method: 'GET',
+                    rejectUnauthorized: false,
+                    timeout: 4000
+                };
+                const request = https.request(options, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => data += chunk);
+                    response.on('end', () => {
+                        try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+                    });
+                });
+                request.on('error', reject);
+                request.on('timeout', () => { request.destroy(); reject(new Error("Timeout")); });
+                request.end();
+            });
+
+            if (apiRes && apiRes[0]?.Status === "Success" && apiRes[0]?.PostOffice?.length > 0) {
+                const po = apiRes[0].PostOffice[0];
+                postOfficeName = po.Name;
+                city = po.District;
+                state = po.State;
+            }
+        } catch (err) {
+            console.error("Postal Pincode API warning:", err.message);
+        }
+
+        // 2. Fetch coordinates (lat/long) using existing getCoordinates function
+        // This function automatically calls Google Maps Geocoding (if active) and caches details in MySQL
+        try {
+            const coords = await getCoordinates(cleaned);
+            if (coords) {
+                latitude = coords.latitude;
+                longitude = coords.longitude;
+                if (!city) city = coords.city;
+                if (!state) state = coords.state;
+            }
+        } catch (coordErr) {
+            console.error("Coordinates API warning:", coordErr.message);
+        }
+
+        if (!city && !state) {
+            return res.status(404).json({ success: false, message: "Details for this pincode could not be found." });
+        }
+
+        const formattedAddress = postOfficeName 
+            ? `${postOfficeName}, ${city}, ${state} - ${cleaned}`
+            : `${city}, ${state} - ${cleaned}`;
+
+        res.status(200).json({
+            success: true,
+            pincode: cleaned,
+            city,
+            state,
+            postOffice: postOfficeName,
+            address: formattedAddress,
+            latitude,
+            longitude
+        });
+
+    } catch (err) {
+        console.error("CRITICAL error in getPincodeDetails:", err);
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };

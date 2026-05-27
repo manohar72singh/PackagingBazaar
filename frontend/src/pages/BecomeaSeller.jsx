@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { registerSellerAPI } from "../services/authServices.js";
 import { getAuthState } from "../utils/auth";
 import { useNotification } from "../context/NotificationContext";
+import { fetchPincodeDetailsAPI } from "../services/inquiryServices.js";
 import {
   CheckCircle, Building2, User, Lock, Eye, EyeOff,
   Mail, Clock, Shield, ArrowRight, ChevronRight,
@@ -131,15 +132,13 @@ export default function BecomeaSeller() {
     // Valid 6-digit pincode — call API
     setPincodeStatus("loading");
     try {
-      const res = await fetch(`https://api.postalpincode.in/pincode/${cleaned}`);
-      const data = await res.json();
+      const data = await fetchPincodeDetailsAPI(cleaned);
 
-      if (data[0]?.Status === "Success" && data[0]?.PostOffice?.length > 0) {
-        const po = data[0].PostOffice[0];
-        setF("city", po.District);
-        setF("state", po.State);
+      if (data.success) {
+        setF("city", data.city);
+        setF("state", data.state);
         // Pre-fill address with a sensible default (user can edit)
-        setF("address", `${po.Name}, ${po.District}, ${po.State} - ${cleaned}`);
+        setF("address", data.address);
         setPincodeStatus("valid");
       } else {
         setF("city", "");
@@ -148,6 +147,9 @@ export default function BecomeaSeller() {
         setPincodeStatus("invalid");
       }
     } catch {
+      setF("city", "");
+      setF("state", "");
+      setF("address", "");
       setPincodeStatus("invalid");
     }
   };

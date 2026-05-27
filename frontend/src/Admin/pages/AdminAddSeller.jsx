@@ -21,6 +21,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { addSellerAdmin } from "../../services/adminServices";
 import { useNotification } from "../../context/NotificationContext";
+import { fetchPincodeDetailsAPI } from "../../services/inquiryServices";
 
 const inputCls = "w-full px-4 py-2.5 text-sm border border-black/[0.1] rounded-xl bg-slate-50 focus:outline-none focus:bg-white focus:border-accent transition-colors text-ink placeholder:text-slate-400 font-medium";
 
@@ -81,13 +82,11 @@ export default function AdminAddSeller() {
     }
     setPincodeStatus("loading");
     try {
-      const res = await fetch(`https://api.postalpincode.in/pincode/${cleaned}`);
-      const data = await res.json();
-      if (data[0]?.Status === "Success" && data[0]?.PostOffice?.length > 0) {
-        const po = data[0].PostOffice[0];
-        setSellerVal("city", po.District);
-        setSellerVal("state", po.State);
-        setSellerVal("businessAddress", `${po.Name}, ${po.District}, ${po.State} - ${cleaned}`);
+      const data = await fetchPincodeDetailsAPI(cleaned);
+      if (data.success) {
+        setSellerVal("city", data.city);
+        setSellerVal("state", data.state);
+        setSellerVal("businessAddress", data.address);
         setPincodeStatus("valid");
       } else {
         setPincodeStatus("invalid");

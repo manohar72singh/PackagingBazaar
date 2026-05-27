@@ -18,3 +18,9 @@ export const fetchBuyerInquiriesAPI = async () => {
     const response = await API.get("/inquiries/user/my-inquiries");
     return response.data;
 };
+
+// Fetch pincode details from our robust backend proxy
+export const fetchPincodeDetailsAPI = async (pincode) => {
+    const response = await API.get(`/inquiries/pincode/${pincode}`);
+    return response.data;
+};
