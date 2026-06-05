@@ -10,6 +10,7 @@ import Pagination from "../components/ui/Pagination";
 import { motion } from "framer-motion";
 import { ProductCardSkeleton } from "../components/ui/SkeletonLoader";
 import InquiryModal from "../components/ui/InquiryModal";
+import SEO from "../components/SEO";
 
 export default function ProductsPage() {
   const location = useLocation();
@@ -152,6 +153,10 @@ export default function ProductsPage() {
 
   return (
     <>
+      <SEO 
+        title={filters.category !== "All" ? `${filters.category} Packaging Products` : "All Products"} 
+        description={`Browse our premium range of ${filters.category !== "All" ? filters.category : ''} packaging solutions at wholesale prices.`} 
+      />
       <div className="bg-ink py-12 sm:py-20 px-4">
         <div className="max-w-7xl mx-auto text-center sm:text-left">
           <span className="text-[10px] sm:text-[11px] font-semibold tracking-[3px] uppercase text-accent block mb-2">

@@ -61,7 +61,7 @@ export default function ProductCard({ product, onInquiry }) {
 
   const handleImageClick = () => {
     const sellerParam = product.seller_id ? `?sellerId=${product.seller_id}` : "";
-    navigate(`/products/${product.id}${sellerParam}`);
+    navigate(`/products/${product.slug || product.id}${sellerParam}`);
   };
 
   const handleAddToCart = (e) => {
@@ -97,7 +97,7 @@ export default function ProductCard({ product, onInquiry }) {
             onClick={(e) => {
               e.stopPropagation();
               const sellerParam = product.seller_id ? `?sellerId=${product.seller_id}` : "";
-              navigate(`/products/${product.id}${sellerParam}`);
+              navigate(`/products/${product.slug || product.id}${sellerParam}`);
             }}
             className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow text-ink2 hover:text-accent border border-black/[0.05]"
             title="View Details"

@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import { fetchBlogBySlug } from "../services/blogServices";
 import { getImageUrl } from "../services/api";
 import { Calendar, Clock, ArrowLeft, User, Tag, Loader2, Share2, Copy, Check } from "lucide-react";
+import SEO from "../components/SEO";
 
 const PLACEHOLDER =
   "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=1200&auto=format&fit=crop&q=80";
@@ -24,97 +26,7 @@ export default function BlogDetailPage() {
       .finally(() => setLoading(false));
   }, [slug]);
 
-  useEffect(() => {
-    if (!blog) return;
-
-    const originalTitle = document.title;
-    
-    // Helper to get or create a meta tag
-    const setMetaTag = (attributeName, attributeValue, content) => {
-      let element = document.querySelector(`meta[${attributeName}="${attributeValue}"]`);
-      if (!element) {
-        element = document.createElement("meta");
-        element.setAttribute(attributeName, attributeValue);
-        document.head.appendChild(element);
-      }
-      element.setAttribute("content", content || "");
-      return element;
-    };
-
-    // Determine values with fallback
-    const titleVal = blog.meta_title || `${blog.title} | PackagingBazaar`;
-    const descVal = blog.meta_description || blog.excerpt || blog.title;
-    const keywordsVal = blog.meta_keywords || blog.tags || "packaging, packagingbazaar, blog";
-    const imgVal = blog.cover_image ? getImageUrl(blog.cover_image) : PLACEHOLDER;
-
-    // Apply Meta Tags
-    document.title = titleVal;
-    setMetaTag("name", "description", descVal);
-    setMetaTag("name", "keywords", keywordsVal);
-
-    // Open Graph Tags
-    setMetaTag("property", "og:title", titleVal);
-    setMetaTag("property", "og:description", descVal);
-    setMetaTag("property", "og:image", imgVal);
-    setMetaTag("property", "og:url", window.location.href);
-    setMetaTag("property", "og:type", "article");
-
-    // Twitter Card Tags
-    setMetaTag("name", "twitter:card", "summary_large_image");
-    setMetaTag("name", "twitter:title", titleVal);
-    setMetaTag("name", "twitter:description", descVal);
-    setMetaTag("name", "twitter:image", imgVal);
-
-    // Inject JSON-LD Schema
-    const scriptId = "blog-schema-markup";
-    let scriptTag = document.getElementById(scriptId);
-    if (!scriptTag) {
-      scriptTag = document.createElement("script");
-      scriptTag.id = scriptId;
-      scriptTag.type = "application/ld+json";
-      document.head.appendChild(scriptTag);
-    }
-    scriptTag.text = JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "BlogPosting",
-      "headline": blog.title,
-      "image": [imgVal],
-      "datePublished": blog.created_at,
-      "dateModified": blog.updated_at || blog.created_at,
-      "author": {
-        "@type": "Person",
-        "name": blog.author || "PackagingBazaar Team"
-      },
-      "description": blog.excerpt || blog.title,
-      "publisher": {
-        "@type": "Organization",
-        "name": "PackagingBazaar",
-        "logo": {
-          "@type": "ImageObject",
-          "url": `${window.location.origin}/logo.png`
-        }
-      }
-    });
-
-    // Cleanup on unmount
-    return () => {
-      document.title = originalTitle;
-      
-      // Revert standard meta fallbacks
-      document.querySelector('meta[name="description"]')?.setAttribute(
-        "content", 
-        "PackagingBazaar is the leading marketplace for verified packaging manufacturers, suppliers, and custom box listings."
-      );
-      document.querySelector('meta[name="keywords"]')?.setAttribute(
-        "content", 
-        "packaging, B2B, boxes, custom packaging"
-      );
-
-      // Remove Schema Tag
-      const addedScript = document.getElementById(scriptId);
-      if (addedScript) addedScript.remove();
-    };
-  }, [blog]);
+  // Removed manual SEO manipulation, replaced with <SEO> and <Helmet> components
 
   if (loading) {
     return (
@@ -153,6 +65,38 @@ export default function BlogDetailPage() {
 
   return (
     <div className="min-h-screen bg-surface">
+      <SEO 
+        title={blog.meta_title || blog.title}
+        description={blog.meta_description || blog.excerpt || blog.title}
+        keywords={blog.meta_keywords || blog.tags || "packaging, packagingbazaar, blog"}
+        image={img}
+        type="article"
+      />
+      <Helmet>
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "BlogPosting",
+            "headline": blog.title,
+            "image": [img],
+            "datePublished": blog.created_at,
+            "dateModified": blog.updated_at || blog.created_at,
+            "author": {
+              "@type": "Person",
+              "name": blog.author || "PackagingBazaar Team"
+            },
+            "description": blog.excerpt || blog.title,
+            "publisher": {
+              "@type": "Organization",
+              "name": "PackagingBazaar",
+              "logo": {
+                "@type": "ImageObject",
+                "url": `${window.location.origin}/logo.png`
+              }
+            }
+          })}
+        </script>
+      </Helmet>
       {/* Hero Cover */}
       <div className="relative h-[340px] sm:h-[440px] overflow-hidden bg-ink">
         <img

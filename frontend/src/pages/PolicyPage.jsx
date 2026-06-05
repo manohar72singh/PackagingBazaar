@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import SEO from "../components/SEO";
 
 export default function PolicyPage() {
   const { hash } = useLocation();
@@ -177,6 +178,7 @@ export default function PolicyPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
+      <SEO title="Policies & Terms" description="Read our privacy policy, terms of use, shipping policy, and return policy." />
       {/* Hero Section */}
       <div className="bg-ink relative overflow-hidden py-24 px-4">
         {/* Abstract Background Elements */}

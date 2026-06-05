@@ -1,8 +1,11 @@
 import WhyChooseUs from "../components/sections/WhyChooseUs";
 import ReviewSection from "../components/sections/ReviewSection";
+import SEO from "../components/SEO";
+
 export default function AboutPage() {
   return (
     <>
+      <SEO title="About Us" description="PackagingBazaar is India's most reliable packaging film marketplace. We connect verified buyers and sellers." />
       <div className="bg-ink py-8 md:py-14 px-4 text-center md:text-left">
         <div className="max-w-7xl mx-auto">
           <span className="text-[10px] md:text-xs font-semibold tracking-[3px] uppercase text-accent">

@@ -32,12 +32,14 @@ export const getProductVariants = async (req, res) => {
     
     // Get group_key and subcategory of current product
     const [rows] = await pool.query(
-      "SELECT group_key, product_group_id, sub_category_id FROM products WHERE id = ?", 
-      [id]
+      "SELECT id, group_key, product_group_id, sub_category_id FROM products WHERE slug = ? OR id = ?", 
+      [id, id]
     );
     const current = rows[0];
     
     if (!current) return res.status(404).json({ success: false, message: "Product not found" });
+
+    const actualId = current.id;
 
     // Increase GROUP_CONCAT limit for Base64 images
     const connection = await pool.getConnection();
@@ -50,6 +52,7 @@ export const getProductVariants = async (req, res) => {
       if (current.group_key || current.product_group_id) {
         [variants] = await connection.query(
           `SELECT p.id as id, 
+                  MAX(p.slug) as slug,
                   MAX(p.name) as name, 
                   MAX(p.thickness) as thickness, 
                   MAX(p.width) as width, 
@@ -68,7 +71,7 @@ export const getProductVariants = async (req, res) => {
            WHERE (p.group_key = ? OR (p.product_group_id IS NOT NULL AND p.product_group_id = ?)) AND p.id != ?
            GROUP BY p.id
            LIMIT 20`,
-          [current.group_key, current.product_group_id, id]
+          [current.group_key, current.product_group_id, actualId]
         );
       }
       
@@ -76,6 +79,7 @@ export const getProductVariants = async (req, res) => {
       if (variants.length === 0 && current.sub_category_id) {
         [variants] = await connection.query(
           `SELECT p.id as id, 
+                  MAX(p.slug) as slug,
                   MAX(p.name) as name, 
                   MAX(p.thickness) as thickness, 
                   MAX(p.width) as width, 
@@ -94,7 +98,7 @@ export const getProductVariants = async (req, res) => {
            WHERE p.sub_category_id = ? AND p.id != ?
            GROUP BY p.id
            LIMIT 10`,
-          [current.sub_category_id, id]
+          [current.sub_category_id, actualId]
         );
       }
 
@@ -249,6 +253,7 @@ export const getAllProducts = async (req, res) => {
     let dataQuery = `
       SELECT 
         SUBSTRING_INDEX(GROUP_CONCAT(p.id ORDER BY COALESCE(sp.price_min, p.min_price) ASC SEPARATOR '||'), '||', 1) as id,
+        SUBSTRING_INDEX(GROUP_CONCAT(p.slug ORDER BY COALESCE(sp.price_min, p.min_price) ASC SEPARATOR '||'), '||', 1) as slug,
         MAX(p.name) as name,
         MAX(p.display_name) as display_name,
         SUBSTRING_INDEX(GROUP_CONCAT(p.description ORDER BY COALESCE(sp.price_min, p.min_price) ASC SEPARATOR '||'), '||', 1) as description,
@@ -361,6 +366,7 @@ export const getProductsBySellers = async (req, res) => {
       const query = `
         SELECT 
           p.id as id,
+          MAX(p.slug) as slug,
           MAX(p.name) as name,
           MAX(p.display_name) as display_name,
           MAX(p.image_url) as image_url,
@@ -454,7 +460,7 @@ export const getProductById = async (req, res) => {
     LEFT JOIN product_application_mapping pam ON p.id = pam.product_id
     LEFT JOIN applications a ON pam.app_id = a.id
     LEFT JOIN sellers s ON s.id = COALESCE(sp.seller_id, p.seller_id)
-    WHERE p.id = ?
+    WHERE p.slug = ? OR p.id = ?
     GROUP BY p.id
   `;
 
@@ -466,7 +472,7 @@ export const getProductById = async (req, res) => {
         sellerId || null, sellerId || null, sellerId || null,
         sellerId || null, sellerId || null, 
         sellerId || null, sellerId || null,
-        id
+        id, id
       ]);
 
       if (rows.length === 0) {
@@ -534,7 +540,7 @@ export const getTopSellingProducts = async (req, res) => {
       await connection.query("SET SESSION group_concat_max_len = 10000000");
 
       const query = `
-        SELECT MAX(p.id) as id, MAX(p.name) as name, MAX(p.description) as description, MAX(p.image_url) as image_url,
+        SELECT MAX(p.id) as id, MAX(p.slug) as slug, MAX(p.name) as name, MAX(p.description) as description, MAX(p.image_url) as image_url,
                SUBSTRING_INDEX(GROUP_CONCAT(IFNULL(p.additional_images, '') ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as additional_images,
                MAX(p.unit) as unit,
                MAX(t.tag_name) as tag_name, MAX(c.name) as category_name, 
@@ -583,6 +589,7 @@ export const getUniqueTopSelling = async (req, res) => {
           p.name,
           -- Pick ALL fields from the same product (lowest id) to avoid mismatch
           SUBSTRING_INDEX(GROUP_CONCAT(p.id ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as id,
+          SUBSTRING_INDEX(GROUP_CONCAT(p.slug ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as slug,
           SUBSTRING_INDEX(GROUP_CONCAT(p.image_url ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as image_url,
           SUBSTRING_INDEX(GROUP_CONCAT(IFNULL(p.additional_images, '') ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as additional_images,
           SUBSTRING_INDEX(GROUP_CONCAT(p.description ORDER BY p.id ASC SEPARATOR '||'), '||', 1) as description,
@@ -705,12 +712,30 @@ export const addProduct = async (req, res) => {
        if (grpRows.length > 0) resolvedGroupId = grpRows[0].id;
     }
 
+    // Generate Unique Slug
+    const generateSlug = (title) => {
+      return title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-');
+    };
+    let slug = generateSlug(name || `product-${Date.now()}`);
+    let isUnique = false;
+    let counter = 1;
+    let finalSlug = slug;
+    while (!isUnique) {
+      const [existingSlug] = await connection.query('SELECT id FROM products WHERE slug = ?', [finalSlug]);
+      if (existingSlug.length > 0) {
+        finalSlug = `${slug}-${counter}`;
+        counter++;
+      } else {
+        isUnique = true;
+      }
+    }
+
     // 1. Insert into products
     const [productResult] = await connection.query(
       `INSERT INTO products 
-      (name, sub_category_id, tag_id, seller_id, product_group_id, group_key, product_code, thickness, width, product_type, color, min_price, max_price, unit, description, image_url, delivery_time, pdf_url, additional_images) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, resolvedSubCategoryId, resolvedTagId, seller_id, resolvedGroupId, groupKey === "NEW_GROUP" ? (newGroupId || `GP-${Date.now()}`) : groupKey, req.body.productCode, thickness, width, req.body.productType, req.body.color, minPrice, maxPrice, unit, description, image_url, req.body.deliveryTime, pdf_url || null, JSON.stringify(additional_images || [])],
+      (name, slug, sub_category_id, tag_id, seller_id, product_group_id, group_key, product_code, thickness, width, product_type, color, min_price, max_price, unit, description, image_url, delivery_time, pdf_url, additional_images) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, finalSlug, resolvedSubCategoryId, resolvedTagId, seller_id, resolvedGroupId, groupKey === "NEW_GROUP" ? (newGroupId || `GP-${Date.now()}`) : groupKey, req.body.productCode, thickness, width, req.body.productType, req.body.color, minPrice, maxPrice, unit, description, image_url, req.body.deliveryTime, pdf_url || null, JSON.stringify(additional_images || [])],
     );
 
     const productId = productResult.insertId;
@@ -1111,6 +1136,7 @@ export const getSellersByGroupKey = async (req, res) => {
       SELECT 
         MAX(COALESCE(sp.id, p.id)) as id,
         p.id as product_id,
+        MAX(p.slug) as slug,
         p.image_url,
         p.thickness,
         COALESCE(MIN(sp.price_min), MAX(p.min_price)) as price_min,

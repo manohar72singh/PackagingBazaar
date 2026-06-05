@@ -64,7 +64,7 @@ export default function TopSelling() {
             topItems.map((p, i) => (
               <div
                 key={p.id}
-                onClick={() => navigate(`/products/${p.id}`)}
+                onClick={() => navigate(`/products/${p.slug || p.id}`)}
                 className="bg-surface rounded-2xl border border-black/[0.07] p-4 flex items-center gap-4 cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all"
               >
                 <span className="font-syne font-black text-3xl text-accent/20 min-w-[2rem]">

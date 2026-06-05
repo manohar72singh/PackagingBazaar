@@ -16,6 +16,7 @@ import inquiryRoutes from './routes/inquiryRoutes.js';
 import contactRoutes from './routes/contactRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import blogRoutes from './routes/blogRoutes.js';
+import sitemapRoutes from './routes/sitemapRoutes.js';
 
 import { createServer } from 'http';
 import { initSocket } from './socket.js';
@@ -75,7 +76,8 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/blogs', blogRoutes);
 
-
+// SEO Routes (Dynamic Sitemap)
+app.use('/', sitemapRoutes);
 
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => console.log(`Server running on port ${PORT}`));

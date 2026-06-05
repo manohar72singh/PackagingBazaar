@@ -3,10 +3,12 @@ import WhyChooseUs from "../components/sections/WhyChooseUs";
 import { useNotification } from "../context/NotificationContext";
 import { useState } from "react";
 import { submitContactMessage } from "../services/contactServices";
+import SEO from "../components/SEO";
 
 export default function ContactPage() {
   const { notifySuccess, notifyError } = useNotification();
   const [submitting, setSubmitting] = useState(false);
+  // ... rest of state
   const [formData, setFormData] = useState({
     name: "",
     company_name: "",
@@ -50,6 +52,7 @@ export default function ContactPage() {
   };
   return (
     <>
+      <SEO title="Contact Us" description="Get in touch with PackagingBazaar for custom quotes and inquiries about premium packaging films." />
       <div className="bg-ink py-10 md:py-14 px-4 text-center md:text-left">
         <div className="max-w-7xl mx-auto">
           <span className="text-[10px] md:text-xs font-semibold tracking-[3px] uppercase text-accent">

@@ -9,6 +9,7 @@ import {
   Mail, Clock, Shield, ArrowRight, ChevronRight,
   MapPin, AlertCircle, Phone, Loader2, Search,
 } from "lucide-react";
+import SEO from "../components/SEO";
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 const BUSINESS_TYPES = ["Manufacturer", "Trader", "Stockist", "Distributor", "Converter"];
@@ -285,6 +286,7 @@ export default function BecomeaSeller() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
+      <SEO title="Become a Seller" description="Join PackagingBazaar — India's trusted B2B packaging marketplace. List your products and grow your business." />
       {/* Header */}
       <div className="bg-gray-900 py-12 px-4 text-center">
         <div className="max-w-2xl mx-auto">

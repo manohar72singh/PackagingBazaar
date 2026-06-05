@@ -3,6 +3,7 @@ import { CartProvider } from "./context/CartContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import { SocketProvider } from "./context/SocketContext";
 import ScrollToTop from "./components/layout/ScrollToTop";
+import SEO from "./components/SEO";
 
 // Layouts
 import UserLayout from "./layouts/UserLayout";
@@ -61,6 +62,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ScrollToTop />
+      <SEO />
       <NotificationProvider>
         <SocketProvider>
           <CartProvider>
@@ -79,7 +81,7 @@ export default function App() {
                 <Route element={<UserLayout />}>
                   <Route path="/" element={<HomePage />} />
                   <Route path="/products" element={<ProductsPage />} />
-                  <Route path="/products/:id" element={<ProductDetailPage />} />
+                  <Route path="/products/:slug" element={<ProductDetailPage />} />
                   <Route path="/cart" element={<CartPage />} />
                   <Route path="/contact" element={<ContactPage />} />
                   <Route path="/about" element={<AboutPage />} />

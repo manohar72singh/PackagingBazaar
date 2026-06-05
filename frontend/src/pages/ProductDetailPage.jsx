@@ -38,6 +38,8 @@ import {
   ChevronRight,
   FileText,
 } from "lucide-react";
+import SEO from "../components/SEO";
+import { Helmet } from "react-helmet-async";
 
 const gradColors = {
   BOPP: "from-green-50 to-emerald-100",
@@ -82,7 +84,7 @@ const DeliveryBadge = ({ hours, timeStr, className = "" }) => {
 };
 
 export default function ProductDetailPage() {
-  const { id } = useParams();
+  const { slug } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const sellerId = searchParams.get("sellerId");
@@ -130,7 +132,7 @@ export default function ProductDetailPage() {
       setLoading(true);
       try {
         // 1. Fetch main product details
-        const res = await fetchProductById(id, sellerId);
+        const res = await fetchProductById(slug, sellerId);
         // Safe data handling
         const productData = res.data || res;
         setProduct(productData);
@@ -147,12 +149,12 @@ export default function ProductDetailPage() {
           if (Array.isArray(relatedData)) {
             // Remove current product from the list
             setRelated(
-              relatedData.filter((p) => p.id !== Number(id)).slice(0, 4),
+              relatedData.filter((p) => p.id !== productData.id).slice(0, 4),
             );
           }
         }
         // 3. Fetch sibling variants
-        const variantsRes = await fetchProductVariants(id);
+        const variantsRes = await fetchProductVariants(slug);
         if (variantsRes.success) {
           setVariants(variantsRes.variants || []);
         }
@@ -176,7 +178,7 @@ export default function ProductDetailPage() {
 
     getDetails();
     window.scrollTo(0, 0);
-  }, [id, sellerId]);
+  }, [slug, sellerId]);
 
   useEffect(() => {
     if (product) {
@@ -244,7 +246,40 @@ export default function ProductDetailPage() {
   const grad = gradColors[product.category_name] || "from-gray-50 to-gray-100";
 
   return (
-    <div key={`${id}-${sellerId}`} className="animate-fadeIn bg-gray-50 min-h-screen">
+    <div key={`${slug}-${sellerId}`} className="animate-fadeIn bg-gray-50 min-h-screen">
+      <SEO 
+        title={product.name} 
+        description={product.description || `Buy ${product.name} at wholesale prices. Minimum order quantity: ${product.min_order} ${product.unit}. Find verified suppliers for ${product.category_name}.`}
+        keywords={`${product.name}, ${product.category_name}, wholesale ${product.name}, buy ${product.name} online, packaging materials`}
+      />
+      <Helmet>
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org/",
+            "@type": "Product",
+            "name": product.name,
+            "image": getImageUrl(product.image_url),
+            "description": product.description || `Buy ${product.name} at wholesale prices.`,
+            "brand": {
+              "@type": "Brand",
+              "name": product.brand || "Packaging Bazaar"
+            },
+            "offers": {
+              "@type": "AggregateOffer",
+              "url": window.location.href,
+              "priceCurrency": "INR",
+              "lowPrice": product.min_price || 0,
+              "highPrice": product.max_price || product.min_price || 0,
+              "offerCount": 1
+            },
+            "aggregateRating": product.review_count > 0 ? {
+              "@type": "AggregateRating",
+              "ratingValue": product.avg_rating || "5",
+              "reviewCount": product.review_count || "1"
+            } : undefined
+          })}
+        </script>
+      </Helmet>
       <div className="max-w-7xl mx-auto px-4 py-4">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-[11px] font-semibold text-gray-400 mb-4">
@@ -644,7 +679,7 @@ export default function ProductDetailPage() {
                           <button
                             onClick={() => {
                               // Use the specific product_id for this seller to get their unique image/specs
-                              navigate(`/products/${s.product_id}?sellerId=${s.seller_id}`);
+                              navigate(`/products/${s.slug || s.product_id}?sellerId=${s.seller_id}`);
                               window.scrollTo(0, 0);
                             }}
                             className="px-6 py-2.5 bg-white border border-black/10 text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-white transition-all shadow-sm"
@@ -686,7 +721,7 @@ export default function ProductDetailPage() {
                 <div
                   key={v.id}
                   onClick={() => {
-                    navigate(`/products/${v.id}`);
+                    navigate(`/products/${v.slug || v.id}`);
                     window.scrollTo(0, 0);
                   }}
                   className="bg-white p-4 rounded-[2rem] flex items-center gap-5 hover:shadow-xl hover:shadow-black/5 transition-all cursor-pointer group border border-transparent hover:border-accent/10 active:scale-[0.99]"
@@ -753,7 +788,7 @@ export default function ProductDetailPage() {
         )}
 
         {/* Review Section */}
-        <ReviewSection productId={id} />
+        <ReviewSection productId={product?.id} />
 
         {/* Inquiry Modal Integration */}
         <InquiryModal
